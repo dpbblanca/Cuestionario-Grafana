@@ -24,12 +24,15 @@
             align-items: center;
             justify-content: center;
             min-height: 100vh;
+            overflow-x: hidden;
         }
 
         #app-container {
             width: 100%;
             max-width: 600px;
             padding: 20px;
+            position: relative;
+            z-index: 10;
         }
 
         .glass-card {
@@ -68,10 +71,22 @@
         }
 
         /* Estilos para la consola del profesor */
-        .teacher-console {
+        .teacher-console-trigger {
             position: fixed;
             bottom: 20px;
             right: 20px;
+            z-index: 100;
+        }
+
+        .teacher-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
     </style>
 </head>
@@ -88,7 +103,7 @@
             <button id="btn-start" class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold transition-colors">
                 COMENZAR
             </button>
-            <p class="mt-4 text-[10px] text-gray-500">Los resultados se guardarán automáticamente para el profesor.</p>
+            <p class="mt-4 text-[10px] text-gray-500 uppercase tracking-widest">Observabilidad en Tiempo Real</p>
         </div>
 
         <!-- Pantalla de Juego -->
@@ -117,75 +132,84 @@
                     <div class="text-xs text-gray-500">ACIERTO</div>
                 </div>
             </div>
-            <div id="sync-status" class="text-xs text-gray-500 mb-4 italic">Enviando resultados...</div>
+            <div id="sync-status" class="text-xs text-gray-500 mb-4 italic">Finalizado correctamente</div>
             <button onclick="location.reload()" class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold transition-colors">
-                REINTENTAR
+                VOLVER A JUGAR
             </button>
         </div>
 
-        <!-- Consola del Profesor (Modal) -->
-        <div id="screen-teacher" class="glass-card hidden fixed inset-0 z-50 overflow-y-auto m-4 lg:m-20 border-sky-500/50">
+    </div>
+
+    <!-- Consola del Profesor -->
+    <div id="modal-teacher" class="teacher-modal hidden">
+        <div class="glass-card w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold text-sky-400">Panel del Profesor</h2>
-                <button onclick="toggleTeacherConsole()" class="text-gray-400 hover:text-white">Cerrar</button>
+                <h2 class="text-xl font-bold text-sky-400 flex items-center gap-2">
+                    <span>👨‍🏫</span> Panel de Control del Profesor
+                </h2>
+                <button onclick="toggleTeacherConsole()" class="text-gray-400 hover:text-white p-2">Cerrar</button>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-y-auto pr-2 custom-scroll">
                 <table class="w-full text-left text-sm">
-                    <thead class="bg-black/20 text-gray-400 uppercase text-[10px] tracking-widest">
+                    <thead class="bg-black/20 text-gray-400 uppercase text-[10px] tracking-widest sticky top-0">
                         <tr>
                             <th class="p-3">Alumno</th>
                             <th class="p-3">Puntuación</th>
                             <th class="p-3">Aciertos</th>
-                            <th class="p-3">Fecha</th>
+                            <th class="p-3">Hora</th>
                         </tr>
                     </thead>
                     <tbody id="leaderboard-data" class="divide-y divide-white/5">
-                        <!-- Datos cargados desde Firestore -->
+                        <tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos registrados todavía.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
-
     </div>
 
-    <!-- Botón discreto para abrir consola del profesor -->
-    <div class="teacher-console">
-        <button onclick="toggleTeacherConsole()" class="w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-300 transition-all text-xs" title="Consola del profesor">
+    <!-- Botón flotante para el profesor -->
+    <div class="teacher-console-trigger">
+        <button onclick="toggleTeacherConsole()" class="w-12 h-12 bg-sky-600 hover:bg-sky-500 rounded-full flex items-center justify-center shadow-lg transition-all transform hover:scale-110" title="Consola del profesor">
             👨‍🏫
         </button>
     </div>
 
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK & Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Configuración de Firebase (inyectada por el entorno)
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia';
+        // Fallback dinámico si no hay configuración
+        let db = null;
+        let auth = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia-v1';
 
-        let currentUser = null;
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
 
-        // Inicializar Autenticación
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) listenForScores();
+                });
             }
-        };
-        initAuth();
+        } catch (e) {
+            console.warn("Firebase no configurado. Funcionando en modo local.");
+        }
 
-        onAuthStateChanged(auth, (user) => {
-            currentUser = user;
-            if (user) listenForScores();
-        });
-
-        // Lógica del Cuestionario
+        // --- Lógica del Juego ---
         const questions = [
             { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
             { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
@@ -206,15 +230,19 @@
         let timeLeft = 15;
         let playerName = "";
 
+        // Hacer global la función de toggle
         window.toggleTeacherConsole = () => {
-            const consoleEl = document.getElementById('screen-teacher');
-            consoleEl.classList.toggle('hidden');
+            const modal = document.getElementById('modal-teacher');
+            modal.classList.toggle('hidden');
         };
 
         const btnStart = document.getElementById('btn-start');
         btnStart.addEventListener('click', () => {
             playerName = document.getElementById('player-name').value.trim();
-            if(!playerName) return alert("Por favor, introduce tu nombre");
+            if(!playerName) {
+                document.getElementById('player-name').classList.add('border-red-500');
+                return;
+            }
             
             document.getElementById('screen-start').classList.add('hidden');
             document.getElementById('screen-quiz').classList.remove('hidden');
@@ -279,54 +307,77 @@
             document.getElementById('res-score').innerText = score;
             document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
 
-            // Guardar en Firestore
-            if (currentUser) {
-                const syncStatus = document.getElementById('sync-status');
+            const syncStatus = document.getElementById('sync-status');
+            
+            // Guardar localmente siempre (como backup)
+            const localData = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
+            localData.push({ nombre: playerName, puntos: score, aciertos: correctAnswers, fecha: new Date().toISOString() });
+            localStorage.setItem('grafana_local_scores', JSON.stringify(localData));
+
+            // Guardar en Firestore si está disponible
+            if (db && auth.currentUser) {
                 try {
-                    const resultRef = doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', currentUser.uid);
+                    const resultRef = doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', auth.currentUser.uid);
                     await setDoc(resultRef, {
                         nombre: playerName,
                         puntos: score,
                         aciertos: correctAnswers,
-                        fecha: new Date().toISOString(),
-                        userId: currentUser.uid
+                        fecha: new Date().toISOString()
                     });
-                    syncStatus.innerText = "✓ Resultados guardados para el profesor";
-                    syncStatus.classList.add('text-green-500');
+                    syncStatus.innerText = "✓ Sincronizado con el Panel del Profesor";
+                    syncStatus.className = "text-xs text-green-400 mb-4 italic";
                 } catch (error) {
-                    console.error("Error guardando datos:", error);
-                    syncStatus.innerText = "Error al sincronizar con el profesor.";
+                    syncStatus.innerText = "Guardado localmente (Sin conexión a nube)";
                 }
+            } else {
+                syncStatus.innerText = "Guardado localmente (Modo offline)";
             }
         }
 
         function listenForScores() {
+            if (!db) return;
             const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
             onSnapshot(q, (snapshot) => {
-                const tbody = document.getElementById('leaderboard-data');
-                tbody.innerHTML = '';
-                
-                // Convertir snapshot a array y ordenar manualmente por puntos (Regla 2)
                 const data = [];
                 snapshot.forEach(doc => data.push(doc.data()));
-                data.sort((a, b) => b.puntos - a.puntos);
-
-                data.forEach(item => {
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-white/5 transition-colors";
-                    const dateStr = new Date(item.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    tr.innerHTML = `
-                        <td class="p-3 font-medium">${item.nombre}</td>
-                        <td class="p-3 text-sky-400 font-bold">${item.puntos}</td>
-                        <td class="p-3 text-gray-400">${item.aciertos}/10</td>
-                        <td class="p-3 text-gray-500 text-xs">${dateStr}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            }, (error) => {
-                console.error("Error escuchando datos:", error);
+                updateLeaderboardUI(data);
+            }, (err) => {
+                // Si falla la nube, cargar local
+                const local = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
+                updateLeaderboardUI(local);
             });
         }
+
+        function updateLeaderboardUI(data) {
+            const tbody = document.getElementById('leaderboard-data');
+            tbody.innerHTML = '';
+            
+            data.sort((a, b) => b.puntos - a.puntos);
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos todavía.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
+                const date = new Date(item.fecha);
+                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                tr.innerHTML = `
+                    <td class="p-3 font-medium text-white">${item.nombre}</td>
+                    <td class="p-3 text-sky-400 font-bold">${item.puntos}</td>
+                    <td class="p-3 text-gray-400">${item.aciertos}/10</td>
+                    <td class="p-3 text-gray-500 text-xs">${timeStr}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Carga inicial de datos locales por si no hay Firebase
+        const initialLocal = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
+        updateLeaderboardUI(initialLocal);
     </script>
 </body>
 </html>
