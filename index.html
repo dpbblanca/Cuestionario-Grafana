@@ -186,7 +186,11 @@
         // --- 1. Definición de Funciones Globales Inmediatas ---
         window.toggleTeacherConsole = () => {
             const modal = document.getElementById('modal-teacher');
-            if (modal) modal.classList.toggle('hidden');
+            if (modal) {
+                modal.classList.toggle('hidden');
+                // Al abrir, refrescar con datos actuales
+                refreshLeaderboard();
+            }
         };
 
         // --- 2. Lógica del Juego ---
@@ -286,18 +290,32 @@
             const scores = JSON.parse(localStorage.getItem('grafana_scores') || '[]');
             scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString() });
             localStorage.setItem('grafana_scores', JSON.stringify(scores));
-            updateLeaderboardUI(scores);
+            refreshLeaderboard();
+        }
+
+        function refreshLeaderboard() {
+            const local = JSON.parse(localStorage.getItem('grafana_scores') || '[]');
+            const cloud = window.lastCloudData || [];
+            
+            // Fusionar y eliminar duplicados basados en nombre y fecha aproximada
+            const combined = [...local, ...cloud];
+            const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
+            
+            updateLeaderboardUI(unique);
         }
 
         function updateLeaderboardUI(data) {
             const tbody = document.getElementById('leaderboard-data');
             if (!tbody) return;
             tbody.innerHTML = '';
+            
             data.sort((a, b) => b.puntos - a.puntos);
+            
             if (data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos todavía.</td></tr>';
                 return;
             }
+            
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
@@ -334,7 +352,8 @@
                     if (!auth.currentUser) return;
                     const syncStatus = document.getElementById('sync-status');
                     try {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', auth.currentUser.uid), {
+                        const userDocId = auth.currentUser.uid + "_" + Date.now();
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', userDocId), {
                             nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString()
                         });
                         if (syncStatus) {
@@ -348,9 +367,9 @@
                     if (user) {
                         const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
                         onSnapshot(q, (snapshot) => {
-                            const cloudData = [];
-                            snapshot.forEach(doc => cloudData.push(doc.data()));
-                            updateLeaderboardUI(cloudData);
+                            window.lastCloudData = [];
+                            snapshot.forEach(doc => window.lastCloudData.push(doc.data()));
+                            refreshLeaderboard();
                         }, (err) => console.log("Usando datos locales únicamente."));
                     }
                 });
@@ -360,7 +379,7 @@
         }
 
         // Carga inicial
-        updateLeaderboardUI(JSON.parse(localStorage.getItem('grafana_scores') || '[]'));
+        refreshLeaderboard();
     </script>
 </body>
 </html>
