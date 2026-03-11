@@ -5,11 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grafana Mastery | Dashboard Trivia</title>
     
-    <!-- Cargamos Tailwind desde CDN con una estrategia de respaldo -->
+    <!-- Scripts externos -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        /* Estilos de emergencia por si falla el JS o el CSS externo */
         :root {
             --slate-900: #0f172a;
             --slate-800: #1e293b;
@@ -27,9 +26,7 @@
             min-height: 100vh;
         }
 
-        /* Forzamos que el contenedor sea siempre visible inicialmente */
         #app-container {
-            display: block !important;
             width: 100%;
             max-width: 600px;
             padding: 20px;
@@ -69,6 +66,13 @@
             width: 100%;
             border-radius: 3px;
         }
+
+        /* Estilos para la consola del profesor */
+        .teacher-console {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+        }
     </style>
 </head>
 <body>
@@ -84,6 +88,7 @@
             <button id="btn-start" class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold transition-colors">
                 COMENZAR
             </button>
+            <p class="mt-4 text-[10px] text-gray-500">Los resultados se guardarán automáticamente para el profesor.</p>
         </div>
 
         <!-- Pantalla de Juego -->
@@ -100,8 +105,8 @@
         </div>
 
         <!-- Pantalla de Resultados -->
-        <div id="screen-results" class="glass-card hidden">
-            <h2 class="text-2xl font-bold text-center mb-6">Resultados Finales</h2>
+        <div id="screen-results" class="glass-card hidden text-center">
+            <h2 class="text-2xl font-bold mb-6">Resultados Finales</h2>
             <div class="flex justify-around mb-8">
                 <div class="text-center">
                     <div id="res-score" class="text-3xl font-bold text-sky-400">0</div>
@@ -112,14 +117,75 @@
                     <div class="text-xs text-gray-500">ACIERTO</div>
                 </div>
             </div>
+            <div id="sync-status" class="text-xs text-gray-500 mb-4 italic">Enviando resultados...</div>
             <button onclick="location.reload()" class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold transition-colors">
                 REINTENTAR
             </button>
         </div>
 
+        <!-- Consola del Profesor (Modal) -->
+        <div id="screen-teacher" class="glass-card hidden fixed inset-0 z-50 overflow-y-auto m-4 lg:m-20 border-sky-500/50">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-sky-400">Panel del Profesor</h2>
+                <button onclick="toggleTeacherConsole()" class="text-gray-400 hover:text-white">Cerrar</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-black/20 text-gray-400 uppercase text-[10px] tracking-widest">
+                        <tr>
+                            <th class="p-3">Alumno</th>
+                            <th class="p-3">Puntuación</th>
+                            <th class="p-3">Aciertos</th>
+                            <th class="p-3">Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-data" class="divide-y divide-white/5">
+                        <!-- Datos cargados desde Firestore -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
-    <script>
+    <!-- Botón discreto para abrir consola del profesor -->
+    <div class="teacher-console">
+        <button onclick="toggleTeacherConsole()" class="w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-gray-600 hover:text-gray-300 transition-all text-xs" title="Consola del profesor">
+            👨‍🏫
+        </button>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuración de Firebase (inyectada por el entorno)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia';
+
+        let currentUser = null;
+
+        // Inicializar Autenticación
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        };
+        initAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) listenForScores();
+        });
+
+        // Lógica del Cuestionario
         const questions = [
             { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
             { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
@@ -138,12 +204,17 @@
         let correctAnswers = 0;
         let timer;
         let timeLeft = 15;
+        let playerName = "";
+
+        window.toggleTeacherConsole = () => {
+            const consoleEl = document.getElementById('screen-teacher');
+            consoleEl.classList.toggle('hidden');
+        };
 
         const btnStart = document.getElementById('btn-start');
-        
         btnStart.addEventListener('click', () => {
-            const name = document.getElementById('player-name').value.trim();
-            if(!name) return alert("Por favor, introduce tu nombre");
+            playerName = document.getElementById('player-name').value.trim();
+            if(!playerName) return alert("Por favor, introduce tu nombre");
             
             document.getElementById('screen-start').classList.add('hidden');
             document.getElementById('screen-quiz').classList.remove('hidden');
@@ -202,11 +273,59 @@
             showQuestion();
         }
 
-        function showResults() {
+        async function showResults() {
             document.getElementById('screen-quiz').classList.add('hidden');
             document.getElementById('screen-results').classList.remove('hidden');
             document.getElementById('res-score').innerText = score;
             document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
+
+            // Guardar en Firestore
+            if (currentUser) {
+                const syncStatus = document.getElementById('sync-status');
+                try {
+                    const resultRef = doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', currentUser.uid);
+                    await setDoc(resultRef, {
+                        nombre: playerName,
+                        puntos: score,
+                        aciertos: correctAnswers,
+                        fecha: new Date().toISOString(),
+                        userId: currentUser.uid
+                    });
+                    syncStatus.innerText = "✓ Resultados guardados para el profesor";
+                    syncStatus.classList.add('text-green-500');
+                } catch (error) {
+                    console.error("Error guardando datos:", error);
+                    syncStatus.innerText = "Error al sincronizar con el profesor.";
+                }
+            }
+        }
+
+        function listenForScores() {
+            const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
+            onSnapshot(q, (snapshot) => {
+                const tbody = document.getElementById('leaderboard-data');
+                tbody.innerHTML = '';
+                
+                // Convertir snapshot a array y ordenar manualmente por puntos (Regla 2)
+                const data = [];
+                snapshot.forEach(doc => data.push(doc.data()));
+                data.sort((a, b) => b.puntos - a.puntos);
+
+                data.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-white/5 transition-colors";
+                    const dateStr = new Date(item.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    tr.innerHTML = `
+                        <td class="p-3 font-medium">${item.nombre}</td>
+                        <td class="p-3 text-sky-400 font-bold">${item.puntos}</td>
+                        <td class="p-3 text-gray-400">${item.aciertos}/10</td>
+                        <td class="p-3 text-gray-500 text-xs">${dateStr}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }, (error) => {
+                console.error("Error escuchando datos:", error);
+            });
         }
     </script>
 </body>
