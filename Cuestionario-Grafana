@@ -4,48 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grafana Mastery | Dashboard Trivia</title>
-    <!-- Google Fonts: Inter para un look moderno y limpio -->
+    
+    <!-- Fuentes y Tailwind -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
+        /* Estilos base críticos para evitar pantalla en blanco */
         body {
             font-family: 'Inter', sans-serif;
+            background: #0f172a; /* Color sólido de respaldo */
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             color: #f8fafc;
             min-height: 100vh;
+            margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow-x: hidden;
-            margin: 0;
         }
 
         .glass-card {
-            background: rgba(30, 41, 59, 0.7);
+            background: rgba(30, 41, 59, 0.8);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 24px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
         }
 
         .modern-btn {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.2s ease;
             border-radius: 12px;
             cursor: pointer;
         }
 
-        .modern-btn:hover:not(:disabled) {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateY(-2px);
+        .modern-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
             border-color: #38bdf8;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-        }
-
-        .modern-btn:active {
-            transform: translateY(0);
         }
 
         .gradient-text {
@@ -54,294 +55,238 @@
             -webkit-text-fill-color: transparent;
         }
 
+        .hidden { display: none !important; }
+
         #timer-progress {
             height: 6px;
             background: linear-gradient(to right, #38bdf8, #818cf8);
             border-radius: 3px;
-            transition: width 1s linear;
+            width: 100%;
         }
 
         .correct-row { background: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; }
         .wrong-row { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; }
 
-        .hidden { display: none; }
-
-        /* Custom scrollbar para el reporte */
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        /* Scrollbar */
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="app" class="w-full max-w-4xl px-4 py-8">
+    <div id="app-container" class="w-full max-w-4xl px-4 py-8">
         
         <!-- Pantalla Inicial -->
-        <div id="screen-start" class="glass-card p-10 text-center max-w-xl mx-auto">
+        <div id="screen-start" class="glass-card p-10 text-center mx-auto">
             <h1 class="text-4xl font-extrabold mb-2 gradient-text">Grafana Mastery</h1>
-            <p class="text-slate-400 mb-8 font-light">Pon a prueba tus conocimientos en observabilidad moderna.</p>
+            <p class="text-slate-400 mb-8 font-light">Desafío de Observabilidad</p>
             
             <div class="space-y-4">
-                <input type="text" id="player-name" placeholder="Tu nombre o alias" 
-                    class="w-full bg-slate-900/50 border border-slate-700 p-4 rounded-xl outline-none focus:border-sky-500 transition-all text-center text-lg text-white">
-                <button onclick="startGame()" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-xl shadow-lg shadow-sky-500/20 transition-all cursor-pointer">
-                    COMENZAR DESAFÍO
+                <input type="text" id="player-name" placeholder="Tu nombre" 
+                    class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl outline-none focus:border-sky-500 text-center text-white">
+                <button id="btn-start" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-xl transition-all cursor-pointer">
+                    COMENZAR
                 </button>
             </div>
         </div>
 
         <!-- Pantalla de Preguntas -->
-        <div id="screen-quiz" class="glass-card p-8 hidden">
+        <div id="screen-quiz" class="glass-card p-8 hidden mx-auto" style="max-width: 800px;">
             <div class="flex justify-between items-center mb-6">
-                <span id="question-counter" class="text-xs font-semibold uppercase tracking-widest text-slate-400">Pregunta 1 de 10</span>
+                <span id="question-counter" class="text-xs font-semibold uppercase text-slate-400">Pregunta 1 de 10</span>
                 <span id="current-score" class="bg-sky-500/10 text-sky-400 px-3 py-1 rounded-full text-xs font-bold">Puntos: 0</span>
             </div>
 
             <div class="w-full bg-slate-800 rounded-full h-1.5 mb-8">
-                <div id="timer-progress" style="width: 100%"></div>
+                <div id="timer-progress"></div>
             </div>
 
-            <h2 id="question-text" class="text-2xl font-semibold mb-8 leading-tight">Cargando...</h2>
-
-            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Opciones -->
-            </div>
+            <h2 id="question-text" class="text-2xl font-semibold mb-8">Cargando...</h2>
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
         </div>
 
-        <!-- Pantalla de Resultados y Reporte -->
+        <!-- Pantalla de Resultados -->
         <div id="screen-results" class="hidden space-y-6">
-            <div class="glass-card p-8 text-center">
-                <h2 class="text-3xl font-bold mb-2">Desafío Completado</h2>
-                <p id="final-summary" class="text-slate-400 mb-6 font-light">Excelente trabajo.</p>
-                <div class="flex justify-center gap-8 mb-4">
-                    <div class="text-center">
+            <div class="glass-card p-8 text-center mx-auto" style="max-width: 600px;">
+                <h2 class="text-3xl font-bold mb-2">Resultados</h2>
+                <div class="flex justify-center gap-8 my-6">
+                    <div>
                         <div id="final-score" class="text-4xl font-extrabold text-sky-400">0</div>
-                        <div class="text-[10px] uppercase tracking-tighter text-slate-500">Puntuación Total</div>
+                        <div class="text-[10px] text-slate-500 uppercase">Puntos</div>
                     </div>
-                    <div class="text-center">
+                    <div>
                         <div id="final-accuracy" class="text-4xl font-extrabold text-indigo-400">0%</div>
-                        <div class="text-[10px] uppercase tracking-tighter text-slate-500">Aciertos</div>
+                        <div class="text-[10px] text-slate-500 uppercase">Aciertos</div>
                     </div>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Reporte Detallado -->
-                <div class="glass-card p-6">
-                    <h3 class="text-sm font-bold mb-4 uppercase text-slate-400">Análisis de respuestas</h3>
-                    <div id="detailed-report" class="space-y-3 max-h-[400px] overflow-y-auto custom-scroll pr-2">
-                        <!-- Filas de reporte -->
-                    </div>
+                <div class="glass-card p-6" style="max-width: none;">
+                    <h3 class="text-sm font-bold mb-4 text-slate-400 uppercase">Análisis</h3>
+                    <div id="detailed-report" class="space-y-3 max-h-[300px] overflow-y-auto custom-scroll pr-2"></div>
                 </div>
-
-                <!-- Leaderboard -->
-                <div class="glass-card p-6">
-                    <h3 class="text-sm font-bold mb-4 uppercase text-slate-400">Ranking Global</h3>
-                    <div class="overflow-hidden rounded-xl border border-slate-700">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-800/50">
-                                <tr>
-                                    <th class="p-4 font-semibold text-slate-300">#</th>
-                                    <th class="p-4 font-semibold text-slate-300">Jugador</th>
-                                    <th class="p-4 font-semibold text-slate-300 text-right">Puntos</th>
-                                </tr>
-                            </thead>
-                            <tbody id="leaderboard-body">
-                                <!-- Datos de ranking -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <button onclick="location.reload()" class="w-full mt-6 modern-btn py-3 text-sm font-bold text-white">REINTENTAR</button>
+                <div class="glass-card p-6" style="max-width: none;">
+                    <h3 class="text-sm font-bold mb-4 text-slate-400 uppercase">Ranking</h3>
+                    <table class="w-full text-left text-sm">
+                        <tbody id="leaderboard-body"></tbody>
+                    </table>
+                    <button onclick="location.reload()" class="w-full mt-6 modern-btn py-3 text-sm font-bold text-white">REPETIR</button>
                 </div>
             </div>
         </div>
 
     </div>
 
-    <!-- Audios -->
-    <audio id="snd-click" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
-    <audio id="snd-end" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
+    <!-- Sonidos -->
+    <audio id="snd-click" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
+    <audio id="snd-end" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
 
     <script>
-        const questions = [
-            { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
-            { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
-            { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
-            { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
-            { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
-            { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
-            { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
-            { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
-            { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
-            { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
-        ];
+        // Todo envuelto en DOMContentLoaded para GitHub Pages
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            const questions = [
+                { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
+                { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
+                { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
+                { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
+                { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
+                { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
+                { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
+                { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
+                { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
+                { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
+            ];
 
-        let state = {
-            currentIdx: 0,
-            score: 0,
-            playerName: "",
-            userAnswers: [],
-            timer: null,
-            timeLeft: 15
-        };
+            let state = {
+                currentIdx: 0,
+                score: 0,
+                playerName: "",
+                userAnswers: [],
+                timer: null,
+                timeLeft: 15
+            };
 
-        const TIME_LIMIT = 15;
-
-        function playSnd(id) {
-            const s = document.getElementById(id);
-            if(s) { 
-                s.currentTime = 0; 
-                s.play().catch(e => console.warn("Audio play blocked or failed:", e)); 
-            }
-        }
-
-        function startGame() {
+            // Referencias DOM
+            const btnStart = document.getElementById('btn-start');
             const nameInput = document.getElementById('player-name');
-            const name = nameInput.value.trim();
-            if(!name) {
-                nameInput.style.borderColor = "#ef4444";
-                return;
-            }
-            
-            state.playerName = name;
-            document.getElementById('screen-start').classList.add('hidden');
-            document.getElementById('screen-quiz').classList.remove('hidden');
-            loadQuestion();
-        }
+            const timerBar = document.getElementById('timer-progress');
 
-        function loadQuestion() {
-            if(state.currentIdx >= questions.length) {
-                showResults();
-                return;
+            function play(id) {
+                const s = document.getElementById(id);
+                if(s) s.play().catch(() => {});
             }
 
-            const q = questions[state.currentIdx];
-            document.getElementById('question-counter').innerText = `Pregunta ${state.currentIdx + 1} de ${questions.length}`;
-            document.getElementById('question-text').innerText = q.q;
-            
-            const container = document.getElementById('options-container');
-            container.innerHTML = '';
-
-            q.o.forEach((opt, i) => {
-                const btn = document.createElement('button');
-                btn.className = 'modern-btn p-5 text-left text-sm font-medium text-slate-300 hover:text-white w-full';
-                btn.innerText = opt;
-                btn.onclick = () => handleAnswer(i);
-                container.appendChild(btn);
-            });
-
-            startTimer();
-        }
-
-        function startTimer() {
-            state.timeLeft = TIME_LIMIT;
-            const bar = document.getElementById('timer-progress');
-            bar.style.transition = 'none';
-            bar.style.width = '100%';
-            
-            // Forzar reflow para reiniciar la animación
-            void bar.offsetWidth;
-            bar.style.transition = 'width 1s linear';
-            
-            clearInterval(state.timer);
-            state.timer = setInterval(() => {
-                state.timeLeft--;
-                bar.style.width = (state.timeLeft / TIME_LIMIT * 100) + '%';
-                if(state.timeLeft <= 0) {
-                    handleAnswer(-1);
+            window.startGame = () => {
+                const name = nameInput.value.trim();
+                if(!name) {
+                    nameInput.style.borderColor = "#ef4444";
+                    return;
                 }
-            }, 1000);
-        }
+                state.playerName = name;
+                document.getElementById('screen-start').classList.add('hidden');
+                document.getElementById('screen-quiz').classList.remove('hidden');
+                loadQuestion();
+            };
 
-        function handleAnswer(selectedIdx) {
-            clearInterval(state.timer);
-            playSnd('snd-click');
-            
-            const q = questions[state.currentIdx];
-            const isCorrect = selectedIdx === q.a;
-            
-            if(isCorrect) {
-                const bonus = state.timeLeft * 5;
-                state.score += 100 + bonus;
+            // Evento manual para el botón ya que está en el HTML
+            btnStart.addEventListener('click', window.startGame);
+
+            function loadQuestion() {
+                if(state.currentIdx >= questions.length) {
+                    showResults();
+                    return;
+                }
+
+                const q = questions[state.currentIdx];
+                document.getElementById('question-counter').innerText = `Pregunta ${state.currentIdx + 1} de ${questions.length}`;
+                document.getElementById('question-text').innerText = q.q;
+                
+                const container = document.getElementById('options-container');
+                container.innerHTML = '';
+
+                q.o.forEach((opt, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'modern-btn p-5 text-left text-sm font-medium text-slate-300 hover:text-white w-full';
+                    btn.innerText = opt;
+                    btn.onclick = () => handleAnswer(i);
+                    container.appendChild(btn);
+                });
+
+                startTimer();
             }
 
-            state.userAnswers.push({
-                question: q.q,
-                selected: selectedIdx === -1 ? "Tiempo agotado" : q.o[selectedIdx],
-                correct: q.o[q.a],
-                isCorrect: isCorrect
-            });
-
-            document.getElementById('current-score').innerText = `Puntos: ${state.score}`;
-            
-            state.currentIdx++;
-            loadQuestion();
-        }
-
-        function showResults() {
-            playSnd('snd-end');
-            document.getElementById('screen-quiz').classList.add('hidden');
-            document.getElementById('screen-results').classList.remove('hidden');
-            
-            document.getElementById('final-summary').innerText = `Gran trabajo, ${state.playerName}. Aquí tienes el resumen de tu desempeño.`;
-            document.getElementById('final-score').innerText = state.score;
-            
-            const correctCount = state.userAnswers.filter(a => a.isCorrect).length;
-            document.getElementById('final-accuracy').innerText = Math.round((correctCount / questions.length) * 100) + '%';
-
-            const reportDiv = document.getElementById('detailed-report');
-            reportDiv.innerHTML = '';
-            state.userAnswers.forEach((ans, i) => {
-                const item = document.createElement('div');
-                item.className = `p-4 rounded-xl text-xs ${ans.isCorrect ? 'correct-row' : 'wrong-row'}`;
-                item.innerHTML = `
-                    <p class="font-bold mb-1">${i+1}. ${ans.question}</p>
-                    <p class="opacity-80">Tu respuesta: <span class="font-semibold">${ans.selected}</span></p>
-                    ${!ans.isCorrect ? `<p class="text-sky-400 mt-1">Correcta: ${ans.correct}</p>` : ''}
-                `;
-                reportDiv.appendChild(item);
-            });
-
-            saveToLeaderboard();
-            displayLeaderboard();
-        }
-
-        function saveToLeaderboard() {
-            try {
-                let scores = JSON.parse(localStorage.getItem('grafana_v2_scores')) || [];
-                scores.push({ name: state.playerName, score: state.score });
-                scores.sort((a, b) => b.score - a.score);
-                localStorage.setItem('grafana_v2_scores', JSON.stringify(scores.slice(0, 8)));
-            } catch (e) {
-                console.error("Error saving to localStorage", e);
+            function startTimer() {
+                state.timeLeft = 15;
+                timerBar.style.transition = 'none';
+                timerBar.style.width = '100%';
+                void timerBar.offsetWidth;
+                timerBar.style.transition = 'width 1s linear';
+                
+                clearInterval(state.timer);
+                state.timer = setInterval(() => {
+                    state.timeLeft--;
+                    timerBar.style.width = (state.timeLeft / 15 * 100) + '%';
+                    if(state.timeLeft <= 0) handleAnswer(-1);
+                }, 1000);
             }
-        }
 
-        function displayLeaderboard() {
-            let scores = [];
-            try {
-                scores = JSON.parse(localStorage.getItem('grafana_v2_scores')) || [];
-            } catch (e) {
-                console.error("Error reading from localStorage", e);
+            function handleAnswer(idx) {
+                clearInterval(state.timer);
+                play('snd-click');
+                const q = questions[state.currentIdx];
+                const isCorrect = idx === q.a;
+                
+                if(isCorrect) state.score += 100 + (state.timeLeft * 5);
+
+                state.userAnswers.push({
+                    q: q.q,
+                    sel: idx === -1 ? "Tiempo agotado" : q.o[idx],
+                    cor: q.o[q.a],
+                    ok: isCorrect
+                });
+
+                document.getElementById('current-score').innerText = `Puntos: ${state.score}`;
+                state.currentIdx++;
+                loadQuestion();
             }
-            
-            const body = document.getElementById('leaderboard-body');
-            body.innerHTML = '';
-            
-            scores.forEach((s, i) => {
-                const row = document.createElement('tr');
-                row.className = s.name === state.playerName ? 'bg-sky-500/10' : '';
-                row.innerHTML = `
-                    <td class="p-4 font-bold text-slate-500">${i + 1}</td>
-                    <td class="p-4 font-medium">${s.name}</td>
-                    <td class="p-4 text-right font-bold text-sky-400">${s.score}</td>
-                `;
-                body.appendChild(row);
-            });
-        }
 
-        // Cargar leaderboard inicial
-        window.onload = displayLeaderboard;
+            function showResults() {
+                play('snd-end');
+                document.getElementById('screen-quiz').classList.add('hidden');
+                document.getElementById('screen-results').classList.remove('hidden');
+                
+                document.getElementById('final-score').innerText = state.score;
+                const correct = state.userAnswers.filter(a => a.ok).length;
+                document.getElementById('final-accuracy').innerText = Math.round((correct / questions.length) * 100) + '%';
+
+                const report = document.getElementById('detailed-report');
+                state.userAnswers.forEach((ans, i) => {
+                    const d = document.createElement('div');
+                    d.className = `p-4 rounded-xl text-xs ${ans.ok ? 'correct-row' : 'wrong-row'}`;
+                    d.innerHTML = `<strong>${i+1}. ${ans.q}</strong><br>Tu respuesta: ${ans.sel}${!ans.ok ? `<br><span class="text-sky-400">Correcta: ${ans.cor}</span>` : ''}`;
+                    report.appendChild(d);
+                });
+
+                saveAndShowRank();
+            }
+
+            function saveAndShowRank() {
+                let scores = JSON.parse(localStorage.getItem('grafana_v3')) || [];
+                scores.push({ n: state.playerName, s: state.score });
+                scores.sort((a,b) => b.s - a.s);
+                scores = scores.slice(0, 5);
+                localStorage.setItem('grafana_v3', JSON.stringify(scores));
+
+                const tbody = document.getElementById('leaderboard-body');
+                scores.forEach((s, i) => {
+                    const r = document.createElement('tr');
+                    r.innerHTML = `<td class="p-3 opacity-50">#${i+1}</td><td class="p-3 font-bold">${s.n}</td><td class="p-3 text-right text-sky-400 font-bold">${s.s}</td>`;
+                    tbody.appendChild(r);
+                });
+            }
+        });
     </script>
 </body>
 </html>
