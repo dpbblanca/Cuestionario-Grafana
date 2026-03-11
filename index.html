@@ -88,6 +88,14 @@
             justify-content: center;
             padding: 20px;
         }
+
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
@@ -160,7 +168,7 @@
                         </tr>
                     </thead>
                     <tbody id="leaderboard-data" class="divide-y divide-white/5">
-                        <tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos registrados todavía.</td></tr>
+                        <!-- Se llena con JS -->
                     </tbody>
                 </table>
             </div>
@@ -174,42 +182,14 @@
         </button>
     </div>
 
-    <!-- Firebase SDK & Logic -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // --- 1. Definición de Funciones Globales Inmediatas ---
+        window.toggleTeacherConsole = () => {
+            const modal = document.getElementById('modal-teacher');
+            if (modal) modal.classList.toggle('hidden');
+        };
 
-        // Fallback dinámico si no hay configuración
-        let db = null;
-        let auth = null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia-v1';
-
-        try {
-            if (typeof __firebase_config !== 'undefined') {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                initAuth();
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) listenForScores();
-                });
-            }
-        } catch (e) {
-            console.warn("Firebase no configurado. Funcionando en modo local.");
-        }
-
-        // --- Lógica del Juego ---
+        // --- 2. Lógica del Juego ---
         const questions = [
             { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
             { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
@@ -230,35 +210,25 @@
         let timeLeft = 15;
         let playerName = "";
 
-        // Hacer global la función de toggle
-        window.toggleTeacherConsole = () => {
-            const modal = document.getElementById('modal-teacher');
-            modal.classList.toggle('hidden');
-        };
-
-        const btnStart = document.getElementById('btn-start');
-        btnStart.addEventListener('click', () => {
+        // Inicialización de botones
+        document.getElementById('btn-start').onclick = () => {
             playerName = document.getElementById('player-name').value.trim();
             if(!playerName) {
                 document.getElementById('player-name').classList.add('border-red-500');
                 return;
             }
-            
             document.getElementById('screen-start').classList.add('hidden');
             document.getElementById('screen-quiz').classList.remove('hidden');
             showQuestion();
-        });
+        };
 
         function showQuestion() {
             if(currentIdx >= questions.length) return showResults();
-
             const q = questions[currentIdx];
             document.getElementById('q-counter').innerText = `Pregunta ${currentIdx + 1}/${questions.length}`;
             document.getElementById('q-text').innerText = q.q;
-            
             const container = document.getElementById('options-container');
             container.innerHTML = '';
-
             q.o.forEach((opt, i) => {
                 const btn = document.createElement('button');
                 btn.className = 'modern-btn';
@@ -266,7 +236,6 @@
                 btn.onclick = () => checkAnswer(i);
                 container.appendChild(btn);
             });
-
             resetTimer();
         }
 
@@ -275,12 +244,10 @@
             const bar = document.getElementById('timer-progress');
             bar.style.transition = 'none';
             bar.style.width = '100%';
-            
             setTimeout(() => {
                 bar.style.transition = 'width 15s linear';
                 bar.style.width = '0%';
             }, 50);
-
             clearInterval(timer);
             timer = setInterval(() => {
                 timeLeft--;
@@ -295,7 +262,6 @@
                 score += 100 + (timeLeft * 5);
                 correctAnswers++;
             }
-            
             document.getElementById('q-score').innerText = `Puntos: ${score}`;
             currentIdx++;
             showQuestion();
@@ -306,78 +272,95 @@
             document.getElementById('screen-results').classList.remove('hidden');
             document.getElementById('res-score').innerText = score;
             document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
-
-            const syncStatus = document.getElementById('sync-status');
             
-            // Guardar localmente siempre (como backup)
-            const localData = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
-            localData.push({ nombre: playerName, puntos: score, aciertos: correctAnswers, fecha: new Date().toISOString() });
-            localStorage.setItem('grafana_local_scores', JSON.stringify(localData));
-
-            // Guardar en Firestore si está disponible
-            if (db && auth.currentUser) {
-                try {
-                    const resultRef = doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', auth.currentUser.uid);
-                    await setDoc(resultRef, {
-                        nombre: playerName,
-                        puntos: score,
-                        aciertos: correctAnswers,
-                        fecha: new Date().toISOString()
-                    });
-                    syncStatus.innerText = "✓ Sincronizado con el Panel del Profesor";
-                    syncStatus.className = "text-xs text-green-400 mb-4 italic";
-                } catch (error) {
-                    syncStatus.innerText = "Guardado localmente (Sin conexión a nube)";
-                }
-            } else {
-                syncStatus.innerText = "Guardado localmente (Modo offline)";
+            // Guardado local
+            saveLocalScore(playerName, score, correctAnswers);
+            
+            // Guardado en la nube (si existe)
+            if (window.cloudSync) {
+                await window.cloudSync(playerName, score, correctAnswers);
             }
         }
 
-        function listenForScores() {
-            if (!db) return;
-            const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
-            onSnapshot(q, (snapshot) => {
-                const data = [];
-                snapshot.forEach(doc => data.push(doc.data()));
-                updateLeaderboardUI(data);
-            }, (err) => {
-                // Si falla la nube, cargar local
-                const local = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
-                updateLeaderboardUI(local);
-            });
+        function saveLocalScore(name, pts, correct) {
+            const scores = JSON.parse(localStorage.getItem('grafana_scores') || '[]');
+            scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString() });
+            localStorage.setItem('grafana_scores', JSON.stringify(scores));
+            updateLeaderboardUI(scores);
         }
 
         function updateLeaderboardUI(data) {
             const tbody = document.getElementById('leaderboard-data');
+            if (!tbody) return;
             tbody.innerHTML = '';
-            
             data.sort((a, b) => b.puntos - a.puntos);
-
             if (data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos todavía.</td></tr>';
                 return;
             }
-
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
                 const date = new Date(item.fecha);
                 const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                
-                tr.innerHTML = `
-                    <td class="p-3 font-medium text-white">${item.nombre}</td>
-                    <td class="p-3 text-sky-400 font-bold">${item.puntos}</td>
-                    <td class="p-3 text-gray-400">${item.aciertos}/10</td>
-                    <td class="p-3 text-gray-500 text-xs">${timeStr}</td>
-                `;
+                tr.innerHTML = `<td class="p-3 font-medium text-white">${item.nombre}</td><td class="p-3 text-sky-400 font-bold">${item.puntos}</td><td class="p-3 text-gray-400">${item.aciertos}/10</td><td class="p-3 text-gray-500 text-xs">${timeStr}</td>`;
                 tbody.appendChild(tr);
             });
         }
 
-        // Carga inicial de datos locales por si no hay Firebase
-        const initialLocal = JSON.parse(localStorage.getItem('grafana_local_scores') || '[]');
-        updateLeaderboardUI(initialLocal);
+        // --- 3. Firebase SDK & Sincronización (Opcional) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia-v1';
+
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+
+                window.cloudSync = async (name, pts, correct) => {
+                    if (!auth.currentUser) return;
+                    const syncStatus = document.getElementById('sync-status');
+                    try {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', auth.currentUser.uid), {
+                            nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString()
+                        });
+                        if (syncStatus) {
+                            syncStatus.innerText = "✓ Sincronizado con el Panel del Profesor";
+                            syncStatus.className = "text-xs text-green-400 mb-4 italic";
+                        }
+                    } catch (e) { console.error(e); }
+                };
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
+                        onSnapshot(q, (snapshot) => {
+                            const cloudData = [];
+                            snapshot.forEach(doc => cloudData.push(doc.data()));
+                            updateLeaderboardUI(cloudData);
+                        }, (err) => console.log("Usando datos locales únicamente."));
+                    }
+                });
+            }
+        } catch (e) {
+            console.log("Modo local activo.");
+        }
+
+        // Carga inicial
+        updateLeaderboardUI(JSON.parse(localStorage.getItem('grafana_scores') || '[]'));
     </script>
 </body>
 </html>
