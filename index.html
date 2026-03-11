@@ -190,7 +190,8 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const FIXED_APP_ID = typeof __app_id !== 'undefined' ? __app_id : "grafana-multi-office-v3";
+        // Obtención robusta del App ID (Regla 1)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-mastery-default';
         let db, auth;
         let currentUser = null;
         window.lastCloudData = [];
@@ -203,44 +204,47 @@
                     auth = getAuth(app);
                     db = getFirestore(app);
 
-                    // Regla 3: Auth ANTES de Firestore
+                    // Regla 3: Autenticación obligatoria antes de cualquier query
+                    const initAuth = async () => {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    };
+                    
+                    await initAuth();
+
                     onAuthStateChanged(auth, (user) => {
+                        currentUser = user;
                         if (user) {
-                            currentUser = user;
-                            document.getElementById('connection-status').innerText = "Estado: Conectado Globalmente";
-                            setupRealtimeListener(); // Solo iniciamos listener tras auth confirmada
+                            document.getElementById('connection-status').innerText = "Estado: Red Global Activa (" + user.uid.substring(0,6) + ")";
+                            setupRealtimeListener(); 
                         }
                     });
-
-                    // Proceso de Sign-in
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
                 }
             } catch (e) {
-                console.error("Error inicializando Firebase:", e);
+                console.error("Firebase Init Error:", e);
+                document.getElementById('connection-status').innerText = "Error de Conexión";
             }
         };
 
         const setupRealtimeListener = () => {
             if (!db || !currentUser) return;
             
-            // Regla 1: Ruta estricta obligatoria
-            const scoresCollection = collection(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'scores');
-            const q = query(scoresCollection);
+            // Regla 1: Ruta exacta pública
+            const scoresPath = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
             
-            // onSnapshot con manejo de errores (Regla de Error Callbacks)
-            onSnapshot(q, (snapshot) => {
+            // Escuchador de tiempo real con manejo de errores obligatorio
+            onSnapshot(scoresPath, (snapshot) => {
                 window.lastCloudData = [];
                 snapshot.forEach(doc => {
                     window.lastCloudData.push(doc.data());
                 });
                 refreshLeaderboard();
             }, (err) => {
-                console.error("Error en el listener:", err);
-                document.getElementById('connection-status').innerText = "Error: Permisos Insuficientes";
+                console.error("Firestore Permission/Path Error:", err);
+                document.getElementById('connection-status').innerText = "Error: Sin acceso a datos globales";
             });
         };
 
@@ -318,32 +322,35 @@
             if (!db || !currentUser) return;
             const status = document.getElementById('sync-status');
             try {
-                // Estructura de documento única por intento
+                // Registro de documento en ruta compartida (Regla 1)
                 const docId = `${currentUser.uid}_${Date.now()}`;
-                await setDoc(doc(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'scores', docId), {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docId), {
                     nombre: name,
                     puntos: pts,
                     aciertos: correct,
-                    fecha: new Date().toISOString()
+                    fecha: new Date().toISOString(),
+                    uid: currentUser.uid
                 });
-                status.innerText = "✓ Resultados compartidos globalmente";
+                status.innerText = "✓ Sincronizado con el Panel del Profesor";
                 status.className = "text-xs text-green-400 mb-6 bg-green-400/10 py-2 rounded-lg border border-green-400/20";
             } catch (e) {
-                console.error("Error sincronizando:", e);
-                status.innerText = "Error de sincronización.";
+                console.error("Sync Error:", e);
+                status.innerText = "Error: Los compañeros no verán este resultado.";
             }
         };
 
         function saveLocalScore(name, pts, correct) {
-            const scores = JSON.parse(localStorage.getItem('grafana_scores_v3') || '[]');
-            scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString() });
-            localStorage.setItem('grafana_scores_v3', JSON.stringify(scores));
+            const scores = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
+            scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString(), local: true });
+            localStorage.setItem('grafana_v4_local', JSON.stringify(scores));
             refreshLeaderboard();
         }
 
         function refreshLeaderboard() {
-            const local = JSON.parse(localStorage.getItem('grafana_scores_v3') || '[]');
+            const local = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
             const cloud = window.lastCloudData || [];
+            
+            // Combinar y eliminar duplicados basados en nombre y fecha exacta
             const combined = [...local, ...cloud];
             const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
             updateLeaderboardUI(unique);
@@ -353,20 +360,32 @@
             const tbody = document.getElementById('leaderboard-data');
             if (!tbody) return;
             tbody.innerHTML = '';
+            
+            // Ordenar por puntos (Regla 2: Ordenar en memoria JS)
             data.sort((a, b) => b.puntos - a.puntos);
+
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic text-xs uppercase tracking-tighter">Sin datos globales disponibles</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic">Esperando que algún alumno complete el test...</td></tr>';
                 return;
             }
+
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
                 const dateObj = new Date(item.fecha);
-                const fechaStr = dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const fechaStr = dateObj.toLocaleDateString('es-ES');
                 const horaStr = dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
                 
+                // Etiqueta visual para distinguir tus propios datos de los de otros
+                const isMine = item.uid === (currentUser?.uid) || item.local;
+
                 tr.innerHTML = `
-                    <td class="p-4"><div class="font-bold text-white">${item.nombre}</div></td>
+                    <td class="p-4">
+                        <div class="font-bold ${isMine ? 'text-sky-400' : 'text-white'} flex items-center gap-2">
+                            ${item.nombre}
+                            ${isMine ? '<span class="text-[8px] bg-sky-500/20 px-1 rounded">TÚ</span>' : ''}
+                        </div>
+                    </td>
                     <td class="p-4 text-sky-400 font-mono font-bold text-lg">${item.puntos}</td>
                     <td class="p-4 text-gray-400">${item.aciertos}/10</td>
                     <td class="p-4">
