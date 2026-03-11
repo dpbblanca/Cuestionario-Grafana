@@ -70,7 +70,6 @@
             border-radius: 3px;
         }
 
-        /* Estilos para la consola del profesor */
         .teacher-console-trigger {
             position: fixed;
             bottom: 20px;
@@ -101,7 +100,6 @@
 <body>
 
     <div id="app-container">
-        
         <!-- Pantalla de Inicio -->
         <div id="screen-start" class="glass-card text-center">
             <h1 class="text-3xl font-bold mb-4 text-sky-400">Grafana Mastery</h1>
@@ -147,7 +145,6 @@
                 REINTENTAR
             </button>
         </div>
-
     </div>
 
     <!-- Consola del Profesor -->
@@ -171,7 +168,6 @@
                         </tr>
                     </thead>
                     <tbody id="leaderboard-data" class="divide-y divide-white/5">
-                        <!-- Datos dinámicos -->
                     </tbody>
                 </table>
             </div>
@@ -190,18 +186,15 @@
     </div>
 
     <script type="module">
-        // --- 1. FIREBASE IMPORTS ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- 2. CONFIGURACIÓN Y ESTADO ---
-        const FIXED_APP_ID = "grafana-multi-office-test-v2";
+        const FIXED_APP_ID = typeof __app_id !== 'undefined' ? __app_id : "grafana-multi-office-v3";
         let db, auth;
         let currentUser = null;
         window.lastCloudData = [];
 
-        // --- 3. INICIALIZACIÓN FIREBASE ---
         const setupFirebase = async () => {
             try {
                 if (typeof __firebase_config !== 'undefined') {
@@ -210,19 +203,16 @@
                     auth = getAuth(app);
                     db = getFirestore(app);
 
-                    // Regla 3: Autenticar ANTES de cualquier operación
+                    // Regla 3: Auth ANTES de Firestore
                     onAuthStateChanged(auth, (user) => {
-                        currentUser = user;
                         if (user) {
-                            console.log("Autenticado como:", user.uid);
+                            currentUser = user;
                             document.getElementById('connection-status').innerText = "Estado: Conectado Globalmente";
-                            setupRealtimeListener();
-                        } else {
-                            document.getElementById('connection-status').innerText = "Estado: Desconectado";
+                            setupRealtimeListener(); // Solo iniciamos listener tras auth confirmada
                         }
                     });
 
-                    // Iniciar sesión
+                    // Proceso de Sign-in
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
@@ -231,16 +221,17 @@
                 }
             } catch (e) {
                 console.error("Error inicializando Firebase:", e);
-                document.getElementById('connection-status').innerText = "Estado: Error de Conexión";
             }
         };
 
         const setupRealtimeListener = () => {
             if (!db || !currentUser) return;
             
-            // Ruta estricta de la Regla 1
-            const q = query(collection(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'scores'));
+            // Regla 1: Ruta estricta obligatoria
+            const scoresCollection = collection(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'scores');
+            const q = query(scoresCollection);
             
+            // onSnapshot con manejo de errores (Regla de Error Callbacks)
             onSnapshot(q, (snapshot) => {
                 window.lastCloudData = [];
                 snapshot.forEach(doc => {
@@ -249,13 +240,10 @@
                 refreshLeaderboard();
             }, (err) => {
                 console.error("Error en el listener:", err);
-                if (err.code === 'permission-denied') {
-                    console.warn("Reintentando conexión por falta de permisos momentánea...");
-                }
+                document.getElementById('connection-status').innerText = "Error: Permisos Insuficientes";
             });
         };
 
-        // --- 4. LÓGICA DEL JUEGO ---
         const questions = [
             { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
             { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
@@ -326,12 +314,11 @@
             await cloudSync(playerName, score, correctAnswers);
         }
 
-        // --- 5. SINCRONIZACIÓN ---
         const cloudSync = async (name, pts, correct) => {
             if (!db || !currentUser) return;
             const status = document.getElementById('sync-status');
             try {
-                // ID único para evitar sobreescritura
+                // Estructura de documento única por intento
                 const docId = `${currentUser.uid}_${Date.now()}`;
                 await setDoc(doc(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'scores', docId), {
                     nombre: name,
@@ -343,19 +330,19 @@
                 status.className = "text-xs text-green-400 mb-6 bg-green-400/10 py-2 rounded-lg border border-green-400/20";
             } catch (e) {
                 console.error("Error sincronizando:", e);
-                status.innerText = "Error de permisos. Guardado solo local.";
+                status.innerText = "Error de sincronización.";
             }
         };
 
         function saveLocalScore(name, pts, correct) {
-            const scores = JSON.parse(localStorage.getItem('grafana_scores_v2') || '[]');
+            const scores = JSON.parse(localStorage.getItem('grafana_scores_v3') || '[]');
             scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString() });
-            localStorage.setItem('grafana_scores_v2', JSON.stringify(scores));
+            localStorage.setItem('grafana_scores_v3', JSON.stringify(scores));
             refreshLeaderboard();
         }
 
         function refreshLeaderboard() {
-            const local = JSON.parse(localStorage.getItem('grafana_scores_v2') || '[]');
+            const local = JSON.parse(localStorage.getItem('grafana_scores_v3') || '[]');
             const cloud = window.lastCloudData || [];
             const combined = [...local, ...cloud];
             const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
@@ -368,22 +355,23 @@
             tbody.innerHTML = '';
             data.sort((a, b) => b.puntos - a.puntos);
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic">Esperando datos de la red...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic text-xs uppercase tracking-tighter">Sin datos globales disponibles</td></tr>';
                 return;
             }
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
                 const dateObj = new Date(item.fecha);
-                const fechaStr = dateObj.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
-                const horaStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const fechaStr = dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const horaStr = dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                
                 tr.innerHTML = `
                     <td class="p-4"><div class="font-bold text-white">${item.nombre}</div></td>
                     <td class="p-4 text-sky-400 font-mono font-bold text-lg">${item.puntos}</td>
                     <td class="p-4 text-gray-400">${item.aciertos}/10</td>
-                    <td class="p-4 text-gray-500 text-xs">
-                        <div class="uppercase tracking-widest font-bold text-[9px] text-gray-600">${fechaStr}</div>
-                        <div>${horaStr}</div>
+                    <td class="p-4">
+                        <div class="text-sky-300 font-bold text-[10px] uppercase tracking-wider mb-0.5">${fechaStr}</div>
+                        <div class="text-gray-400 text-xs">${horaStr}</div>
                     </td>`;
                 tbody.appendChild(tr);
             });
@@ -396,7 +384,6 @@
             if (!modal.classList.contains('hidden')) refreshLeaderboard();
         };
 
-        // Iniciar todo al cargar
         setupFirebase();
         refreshLeaderboard();
     </script>
