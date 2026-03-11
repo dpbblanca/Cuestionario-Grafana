@@ -5,51 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grafana Mastery | Dashboard Trivia</title>
     
-    <!-- Fuentes y Tailwind -->
+    <!-- Preconectar para mejorar carga -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Script de Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        /* Estilos base críticos para evitar pantalla en blanco */
+        /* Estilos base para evitar que nada se vea blanco/invisible */
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --accent: #38bdf8;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background: #0f172a; /* Color sólido de respaldo */
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            background-color: var(--bg-dark);
+            background-image: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             color: #f8fafc;
             min-height: 100vh;
             margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow-x: hidden;
+        }
+
+        /* Aseguramos visibilidad del contenedor principal */
+        #app-container {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
         }
 
         .glass-card {
-            background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            background-color: var(--bg-card); /* Fallback sólido */
+            background-color: rgba(30, 41, 59, 0.9);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 24px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
             max-width: 500px;
+            backdrop-filter: blur(8px);
         }
 
         .modern-btn {
-            background: rgba(255, 255, 255, 0.05);
+            background-color: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             transition: all 0.2s ease;
             border-radius: 12px;
             cursor: pointer;
+            color: white;
+            padding: 1rem;
         }
 
         .modern-btn:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: #38bdf8;
+            background-color: rgba(255, 255, 255, 0.15);
+            border-color: var(--accent);
         }
 
         .gradient-text {
+            color: var(--accent); /* Fallback */
             background: linear-gradient(to right, #38bdf8, #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -64,17 +83,16 @@
             width: 100%;
         }
 
-        .correct-row { background: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; }
-        .wrong-row { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; }
+        .correct-row { background-color: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; }
+        .wrong-row { background-color: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; }
 
-        /* Scrollbar */
         .custom-scroll::-webkit-scrollbar { width: 5px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="app-container" class="w-full max-w-4xl px-4 py-8">
+    <div id="app-container" class="w-full max-w-4xl px-4 py-8" style="display: none;">
         
         <!-- Pantalla Inicial -->
         <div id="screen-start" class="glass-card p-10 text-center mx-auto">
@@ -84,7 +102,7 @@
             <div class="space-y-4">
                 <input type="text" id="player-name" placeholder="Tu nombre" 
                     class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl outline-none focus:border-sky-500 text-center text-white">
-                <button id="btn-start" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-xl transition-all cursor-pointer">
+                <button id="btn-start-action" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-xl transition-all cursor-pointer">
                     COMENZAR
                 </button>
             </div>
@@ -131,162 +149,169 @@
                     <table class="w-full text-left text-sm">
                         <tbody id="leaderboard-body"></tbody>
                     </table>
-                    <button onclick="location.reload()" class="w-full mt-6 modern-btn py-3 text-sm font-bold text-white">REPETIR</button>
+                    <button onclick="window.location.reload()" class="w-full mt-6 modern-btn py-3 text-sm font-bold text-white bg-slate-700 hover:bg-slate-600">REPETIR</button>
                 </div>
             </div>
         </div>
 
     </div>
 
-    <!-- Sonidos -->
-    <audio id="snd-click" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
-    <audio id="snd-end" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
+    <!-- Audios -->
+    <audio id="snd-click" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
+    <audio id="snd-end" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3" preload="auto"></audio>
 
     <script>
-        // Todo envuelto en DOMContentLoaded para GitHub Pages
-        document.addEventListener('DOMContentLoaded', () => {
-            
-            const questions = [
-                { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
-                { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
-                { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
-                { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
-                { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
-                { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
-                { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
-                { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
-                { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
-                { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
-            ];
+        (function() {
+            // Esperar a que el DOM esté listo
+            document.addEventListener('DOMContentLoaded', () => {
+                const appContainer = document.getElementById('app-container');
+                appContainer.style.display = 'block';
 
-            let state = {
-                currentIdx: 0,
-                score: 0,
-                playerName: "",
-                userAnswers: [],
-                timer: null,
-                timeLeft: 15
-            };
+                const questions = [
+                    { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
+                    { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
+                    { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
+                    { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
+                    { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
+                    { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
+                    { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
+                    { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
+                    { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
+                    { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
+                ];
 
-            // Referencias DOM
-            const btnStart = document.getElementById('btn-start');
-            const nameInput = document.getElementById('player-name');
-            const timerBar = document.getElementById('timer-progress');
+                let state = {
+                    currentIdx: 0,
+                    score: 0,
+                    playerName: "",
+                    userAnswers: [],
+                    timer: null,
+                    timeLeft: 15
+                };
 
-            function play(id) {
-                const s = document.getElementById(id);
-                if(s) s.play().catch(() => {});
-            }
+                const timerBar = document.getElementById('timer-progress');
+                const btnStart = document.getElementById('btn-start-action');
 
-            window.startGame = () => {
-                const name = nameInput.value.trim();
-                if(!name) {
-                    nameInput.style.borderColor = "#ef4444";
-                    return;
-                }
-                state.playerName = name;
-                document.getElementById('screen-start').classList.add('hidden');
-                document.getElementById('screen-quiz').classList.remove('hidden');
-                loadQuestion();
-            };
-
-            // Evento manual para el botón ya que está en el HTML
-            btnStart.addEventListener('click', window.startGame);
-
-            function loadQuestion() {
-                if(state.currentIdx >= questions.length) {
-                    showResults();
-                    return;
+                function playSound(id) {
+                    const s = document.getElementById(id);
+                    if(s) s.play().catch(() => {});
                 }
 
-                const q = questions[state.currentIdx];
-                document.getElementById('question-counter').innerText = `Pregunta ${state.currentIdx + 1} de ${questions.length}`;
-                document.getElementById('question-text').innerText = q.q;
-                
-                const container = document.getElementById('options-container');
-                container.innerHTML = '';
+                function initGame() {
+                    const name = document.getElementById('player-name').value.trim();
+                    if(!name) {
+                        document.getElementById('player-name').style.borderColor = "#ef4444";
+                        return;
+                    }
+                    state.playerName = name;
+                    document.getElementById('screen-start').classList.add('hidden');
+                    document.getElementById('screen-quiz').classList.remove('hidden');
+                    renderQuestion();
+                }
 
-                q.o.forEach((opt, i) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'modern-btn p-5 text-left text-sm font-medium text-slate-300 hover:text-white w-full';
-                    btn.innerText = opt;
-                    btn.onclick = () => handleAnswer(i);
-                    container.appendChild(btn);
-                });
+                btnStart.addEventListener('click', initGame);
 
-                startTimer();
-            }
+                function renderQuestion() {
+                    if(state.currentIdx >= questions.length) {
+                        finishQuiz();
+                        return;
+                    }
 
-            function startTimer() {
-                state.timeLeft = 15;
-                timerBar.style.transition = 'none';
-                timerBar.style.width = '100%';
-                void timerBar.offsetWidth;
-                timerBar.style.transition = 'width 1s linear';
-                
-                clearInterval(state.timer);
-                state.timer = setInterval(() => {
-                    state.timeLeft--;
-                    timerBar.style.width = (state.timeLeft / 15 * 100) + '%';
-                    if(state.timeLeft <= 0) handleAnswer(-1);
-                }, 1000);
-            }
+                    const q = questions[state.currentIdx];
+                    document.getElementById('question-counter').innerText = `Pregunta ${state.currentIdx + 1} de ${questions.length}`;
+                    document.getElementById('question-text').innerText = q.q;
+                    
+                    const container = document.getElementById('options-container');
+                    container.innerHTML = '';
 
-            function handleAnswer(idx) {
-                clearInterval(state.timer);
-                play('snd-click');
-                const q = questions[state.currentIdx];
-                const isCorrect = idx === q.a;
-                
-                if(isCorrect) state.score += 100 + (state.timeLeft * 5);
+                    q.o.forEach((opt, i) => {
+                        const btn = document.createElement('button');
+                        btn.className = 'modern-btn text-left text-sm font-medium w-full';
+                        btn.innerText = opt;
+                        btn.onclick = () => processAnswer(i);
+                        container.appendChild(btn);
+                    });
 
-                state.userAnswers.push({
-                    q: q.q,
-                    sel: idx === -1 ? "Tiempo agotado" : q.o[idx],
-                    cor: q.o[q.a],
-                    ok: isCorrect
-                });
+                    startTimerLogic();
+                }
 
-                document.getElementById('current-score').innerText = `Puntos: ${state.score}`;
-                state.currentIdx++;
-                loadQuestion();
-            }
+                function startTimerLogic() {
+                    state.timeLeft = 15;
+                    timerBar.style.transition = 'none';
+                    timerBar.style.width = '100%';
+                    void timerBar.offsetWidth; 
+                    timerBar.style.transition = 'width 1s linear';
+                    
+                    clearInterval(state.timer);
+                    state.timer = setInterval(() => {
+                        state.timeLeft--;
+                        timerBar.style.width = (state.timeLeft / 15 * 100) + '%';
+                        if(state.timeLeft <= 0) processAnswer(-1);
+                    }, 1000);
+                }
 
-            function showResults() {
-                play('snd-end');
-                document.getElementById('screen-quiz').classList.add('hidden');
-                document.getElementById('screen-results').classList.remove('hidden');
-                
-                document.getElementById('final-score').innerText = state.score;
-                const correct = state.userAnswers.filter(a => a.ok).length;
-                document.getElementById('final-accuracy').innerText = Math.round((correct / questions.length) * 100) + '%';
+                function processAnswer(idx) {
+                    clearInterval(state.timer);
+                    playSound('snd-click');
+                    const q = questions[state.currentIdx];
+                    const isCorrect = idx === q.a;
+                    
+                    if(isCorrect) state.score += 100 + (state.timeLeft * 5);
 
-                const report = document.getElementById('detailed-report');
-                state.userAnswers.forEach((ans, i) => {
-                    const d = document.createElement('div');
-                    d.className = `p-4 rounded-xl text-xs ${ans.ok ? 'correct-row' : 'wrong-row'}`;
-                    d.innerHTML = `<strong>${i+1}. ${ans.q}</strong><br>Tu respuesta: ${ans.sel}${!ans.ok ? `<br><span class="text-sky-400">Correcta: ${ans.cor}</span>` : ''}`;
-                    report.appendChild(d);
-                });
+                    state.userAnswers.push({
+                        q: q.q,
+                        sel: idx === -1 ? "Tiempo agotado" : q.o[idx],
+                        cor: q.o[q.a],
+                        ok: isCorrect
+                    });
 
-                saveAndShowRank();
-            }
+                    document.getElementById('current-score').innerText = `Puntos: ${state.score}`;
+                    state.currentIdx++;
+                    renderQuestion();
+                }
 
-            function saveAndShowRank() {
-                let scores = JSON.parse(localStorage.getItem('grafana_v3')) || [];
-                scores.push({ n: state.playerName, s: state.score });
-                scores.sort((a,b) => b.s - a.s);
-                scores = scores.slice(0, 5);
-                localStorage.setItem('grafana_v3', JSON.stringify(scores));
+                function finishQuiz() {
+                    playSound('snd-end');
+                    document.getElementById('screen-quiz').classList.add('hidden');
+                    document.getElementById('screen-results').classList.remove('hidden');
+                    
+                    document.getElementById('final-score').innerText = state.score;
+                    const correctCount = state.userAnswers.filter(a => a.ok).length;
+                    document.getElementById('final-accuracy').innerText = Math.round((correctCount / questions.length) * 100) + '%';
 
-                const tbody = document.getElementById('leaderboard-body');
-                scores.forEach((s, i) => {
-                    const r = document.createElement('tr');
-                    r.innerHTML = `<td class="p-3 opacity-50">#${i+1}</td><td class="p-3 font-bold">${s.n}</td><td class="p-3 text-right text-sky-400 font-bold">${s.s}</td>`;
-                    tbody.appendChild(r);
-                });
-            }
-        });
+                    const report = document.getElementById('detailed-report');
+                    report.innerHTML = '';
+                    state.userAnswers.forEach((ans, i) => {
+                        const d = document.createElement('div');
+                        d.className = `p-4 rounded-xl text-xs mb-2 ${ans.ok ? 'correct-row' : 'wrong-row'}`;
+                        d.innerHTML = `<strong>${i+1}. ${ans.q}</strong><br>Tu respuesta: ${ans.sel}${!ans.ok ? `<br><span class="text-sky-400">Correcta: ${ans.cor}</span>` : ''}`;
+                        report.appendChild(d);
+                    });
+
+                    updateLeaderboard();
+                }
+
+                function updateLeaderboard() {
+                    let scores = [];
+                    try {
+                        scores = JSON.parse(localStorage.getItem('grafana_v4')) || [];
+                    } catch(e) {}
+                    
+                    scores.push({ n: state.playerName, s: state.score });
+                    scores.sort((a,b) => b.s - a.s);
+                    scores = scores.slice(0, 5);
+                    localStorage.setItem('grafana_v4', JSON.stringify(scores));
+
+                    const tbody = document.getElementById('leaderboard-body');
+                    tbody.innerHTML = '';
+                    scores.forEach((s, i) => {
+                        const r = document.createElement('tr');
+                        r.innerHTML = `<td class="p-3 opacity-50">#${i+1}</td><td class="p-3 font-bold">${s.n}</td><td class="p-3 text-right text-sky-400 font-bold">${s.s}</td>`;
+                        tbody.appendChild(r);
+                    });
+                }
+            });
+        })();
     </script>
 </body>
 </html>
