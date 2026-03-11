@@ -188,7 +188,6 @@
             const modal = document.getElementById('modal-teacher');
             if (modal) {
                 modal.classList.toggle('hidden');
-                // Al abrir, refrescar con datos actuales
                 refreshLeaderboard();
             }
         };
@@ -213,6 +212,7 @@
         let timer;
         let timeLeft = 15;
         let playerName = "";
+        window.lastCloudData = [];
 
         // Inicialización de botones
         document.getElementById('btn-start').onclick = () => {
@@ -277,10 +277,7 @@
             document.getElementById('res-score').innerText = score;
             document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
             
-            // Guardado local
             saveLocalScore(playerName, score, correctAnswers);
-            
-            // Guardado en la nube (si existe)
             if (window.cloudSync) {
                 await window.cloudSync(playerName, score, correctAnswers);
             }
@@ -297,7 +294,7 @@
             const local = JSON.parse(localStorage.getItem('grafana_scores') || '[]');
             const cloud = window.lastCloudData || [];
             
-            // Fusionar y eliminar duplicados basados en nombre y fecha aproximada
+            // Usamos un Map para evitar duplicados por nombre y fecha
             const combined = [...local, ...cloud];
             const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
             
@@ -312,7 +309,7 @@
             data.sort((a, b) => b.puntos - a.puntos);
             
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500">No hay datos todavía.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500">Esperando resultados...</td></tr>';
                 return;
             }
             
@@ -326,59 +323,71 @@
             });
         }
 
-        // --- 3. Firebase SDK & Sincronización (Opcional) ---
+        // --- 3. Firebase SDK & Sincronización ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // ID único para tu clase de hoy
+        const FIXED_APP_ID = "clase-grafana-2024-test";
+
         try {
+            // Intentar usar config del entorno o una por defecto para pruebas
+            let config;
             if (typeof __firebase_config !== 'undefined') {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                const auth = getAuth(app);
-                const db = getFirestore(app);
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-trivia-v1';
-
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                initAuth();
-
-                window.cloudSync = async (name, pts, correct) => {
-                    if (!auth.currentUser) return;
-                    const syncStatus = document.getElementById('sync-status');
-                    try {
-                        const userDocId = auth.currentUser.uid + "_" + Date.now();
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'puntuaciones', userDocId), {
-                            nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString()
-                        });
-                        if (syncStatus) {
-                            syncStatus.innerText = "✓ Sincronizado con el Panel del Profesor";
-                            syncStatus.className = "text-xs text-green-400 mb-4 italic";
-                        }
-                    } catch (e) { console.error(e); }
-                };
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'puntuaciones'));
-                        onSnapshot(q, (snapshot) => {
-                            window.lastCloudData = [];
-                            snapshot.forEach(doc => window.lastCloudData.push(doc.data()));
-                            refreshLeaderboard();
-                        }, (err) => console.log("Usando datos locales únicamente."));
-                    }
-                });
+                config = JSON.parse(__firebase_config);
+            } else {
+                // Si no hay config, CloudSync no funcionará pero el modo local sí
+                throw new Error("No firebase config");
             }
+
+            const app = initializeApp(config);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            const initAuth = async () => {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            };
+            initAuth();
+
+            window.cloudSync = async (name, pts, correct) => {
+                if (!auth.currentUser) return;
+                const syncStatus = document.getElementById('sync-status');
+                try {
+                    // ID de documento único por sesión de usuario para que no se borren
+                    const sessionDocId = `${auth.currentUser.uid}_${Date.now()}`;
+                    await setDoc(doc(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'puntuaciones', sessionDocId), {
+                        nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString()
+                    });
+                    if (syncStatus) {
+                        syncStatus.innerText = "✓ Enviado al profesor";
+                        syncStatus.className = "text-xs text-green-400 mb-4 italic";
+                    }
+                } catch (e) { console.error("Error sincronizando:", e); }
+            };
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // Escuchamos TODOS los documentos de la colección de puntuaciones de este appId
+                    const q = query(collection(db, 'artifacts', FIXED_APP_ID, 'public', 'data', 'puntuaciones'));
+                    onSnapshot(q, (snapshot) => {
+                        window.lastCloudData = [];
+                        snapshot.forEach(doc => window.lastCloudData.push(doc.data()));
+                        refreshLeaderboard();
+                    }, (err) => console.log("Error en tiempo real:", err));
+                }
+            });
+
         } catch (e) {
-            console.log("Modo local activo.");
+            console.warn("Modo 100% Local activo. No se verán resultados de otros compañeros.");
+            const syncStatus = document.getElementById('sync-status');
+            if(syncStatus) syncStatus.innerText = "Modo Offline - Datos guardados solo en este PC";
         }
 
-        // Carga inicial
         refreshLeaderboard();
     </script>
 </body>
