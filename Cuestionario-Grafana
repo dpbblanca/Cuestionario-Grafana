@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grafana Mastery | Dashboard Trivia</title>
+    <!-- Google Fonts: Inter para un look moderno y limpio -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .modern-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 12px;
+        }
+
+        .modern-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            border-color: #38bdf8;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+        }
+
+        .modern-btn:active {
+            transform: translateY(0);
+        }
+
+        .gradient-text {
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #timer-progress {
+            height: 6px;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            border-radius: 3px;
+            transition: width 1s linear;
+        }
+
+        .correct-row { background: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; }
+        .wrong-row { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; }
+
+        .hidden { display: none; }
+
+        /* Custom scrollbar para el reporte */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="w-full max-w-4xl px-4 py-8">
+        
+        <!-- Pantalla Inicial -->
+        <div id="screen-start" class="glass-card p-10 text-center max-w-xl mx-auto">
+            <h1 class="text-4xl font-extrabold mb-2 gradient-text">Grafana Mastery</h1>
+            <p class="text-slate-400 mb-8 font-light">Pon a prueba tus conocimientos en observabilidad moderna.</p>
+            
+            <div class="space-y-4">
+                <input type="text" id="player-name" placeholder="Tu nombre o alias" 
+                    class="w-full bg-slate-900/50 border border-slate-700 p-4 rounded-xl outline-none focus:border-sky-500 transition-all text-center text-lg">
+                <button onclick="startGame()" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-xl shadow-lg shadow-sky-500/20 transition-all">
+                    COMENZAR DESAFÍO
+                </button>
+            </div>
+        </div>
+
+        <!-- Pantalla de Preguntas -->
+        <div id="screen-quiz" class="glass-card p-8 hidden">
+            <div class="flex justify-between items-center mb-6">
+                <span id="question-counter" class="text-xs font-semibold uppercase tracking-widest text-slate-400">Pregunta 1 de 10</span>
+                <span id="current-score" class="bg-sky-500/10 text-sky-400 px-3 py-1 rounded-full text-xs font-bold">Puntos: 0</span>
+            </div>
+
+            <div class="w-full bg-slate-800 rounded-full h-1.5 mb-8">
+                <div id="timer-progress" style="width: 100%"></div>
+            </div>
+
+            <h2 id="question-text" class="text-2xl font-semibold mb-8 leading-tight">Cargando...</h2>
+
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Opciones -->
+            </div>
+        </div>
+
+        <!-- Pantalla de Resultados y Reporte -->
+        <div id="screen-results" class="hidden space-y-6">
+            <div class="glass-card p-8 text-center">
+                <h2 class="text-3xl font-bold mb-2">Desafío Completado</h2>
+                <p id="final-summary" class="text-slate-400 mb-6 font-light">Excelente trabajo, [Nombre].</p>
+                <div class="flex justify-center gap-8 mb-4">
+                    <div class="text-center">
+                        <div id="final-score" class="text-4xl font-extrabold text-sky-400">0</div>
+                        <div class="text-[10px] uppercase tracking-tighter text-slate-500">Puntuación Total</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="final-accuracy" class="text-4xl font-extrabold text-indigo-400">0%</div>
+                        <div class="text-[10px] uppercase tracking-tighter text-slate-500">Aciertos</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Reporte Detallado -->
+                <div class="glass-card p-6">
+                    <h3 class="text-sm font-bold mb-4 uppercase text-slate-400">Análisis de respuestas</h3>
+                    <div id="detailed-report" class="space-y-3 max-h-[400px] overflow-y-auto custom-scroll pr-2">
+                        <!-- Filas de reporte -->
+                    </div>
+                </div>
+
+                <!-- Leaderboard -->
+                <div class="glass-card p-6">
+                    <h3 class="text-sm font-bold mb-4 uppercase text-slate-400">Ranking Global</h3>
+                    <div class="overflow-hidden rounded-xl border border-slate-700">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-800/50">
+                                <tr>
+                                    <th class="p-4 font-semibold text-slate-300">#</th>
+                                    <th class="p-4 font-semibold text-slate-300">Jugador</th>
+                                    <th class="p-4 font-semibold text-slate-300 text-right">Puntos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboard-body">
+                                <!-- Datos de ranking -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button onclick="location.reload()" class="w-full mt-6 modern-btn py-3 text-sm font-bold">REINTENTAR</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Audios -->
+    <audio id="snd-click" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
+    <audio id="snd-end" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
+
+    <script>
+        const questions = [
+            { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
+            { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
+            { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
+            { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
+            { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
+            { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
+            { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
+            { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
+            { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
+            { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
+        ];
+
+        let state = {
+            currentIdx: 0,
+            score: 0,
+            playerName: "",
+            userAnswers: [], // Guardaremos {question, selected, correctIdx, isCorrect}
+            timer: null,
+            timeLeft: 15
+        };
+
+        const TIME_LIMIT = 15;
+
+        function playSnd(id) {
+            const s = document.getElementById(id);
+            if(s) { s.currentTime = 0; s.play().catch(()=>{}); }
+        }
+
+        function startGame() {
+            const nameInput = document.getElementById('player-name');
+            if(!nameInput.value.trim()) return;
+            
+            state.playerName = nameInput.value.trim();
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-quiz').classList.remove('hidden');
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            if(state.currentIdx >= questions.length) {
+                showResults();
+                return;
+            }
+
+            const q = questions[state.currentIdx];
+            document.getElementById('question-counter').innerText = `Pregunta ${state.currentIdx + 1} de ${questions.length}`;
+            document.getElementById('question-text').innerText = q.q;
+            
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+
+            q.o.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'modern-btn p-5 text-left text-sm font-medium text-slate-300 hover:text-white';
+                btn.innerText = opt;
+                btn.onclick = () => handleAnswer(i);
+                container.appendChild(btn);
+            });
+
+            startTimer();
+        }
+
+        function startTimer() {
+            state.timeLeft = TIME_LIMIT;
+            const bar = document.getElementById('timer-progress');
+            bar.style.width = '100%';
+            
+            clearInterval(state.timer);
+            state.timer = setInterval(() => {
+                state.timeLeft--;
+                bar.style.width = (state.timeLeft / TIME_LIMIT * 100) + '%';
+                if(state.timeLeft <= 0) {
+                    handleAnswer(-1);
+                }
+            }, 1000);
+        }
+
+        function handleAnswer(selectedIdx) {
+            clearInterval(state.timer);
+            playSnd('snd-click');
+            
+            const q = questions[state.currentIdx];
+            const isCorrect = selectedIdx === q.a;
+            
+            if(isCorrect) {
+                const bonus = state.timeLeft * 5;
+                state.score += 100 + bonus;
+            }
+
+            state.userAnswers.push({
+                question: q.q,
+                selected: selectedIdx === -1 ? "Tiempo agotado" : q.o[selectedIdx],
+                correct: q.o[q.a],
+                isCorrect: isCorrect
+            });
+
+            document.getElementById('current-score').innerText = `Puntos: ${state.score}`;
+            
+            state.currentIdx++;
+            loadQuestion();
+        }
+
+        function showResults() {
+            playSnd('snd-end');
+            document.getElementById('screen-quiz').classList.add('hidden');
+            document.getElementById('screen-results').classList.remove('hidden');
+            
+            document.getElementById('final-summary').innerText = `Gran trabajo, ${state.playerName}. Aquí tienes el resumen de tu desempeño.`;
+            document.getElementById('final-score').innerText = state.score;
+            
+            const correctCount = state.userAnswers.filter(a => a.isCorrect).length;
+            document.getElementById('final-accuracy').innerText = Math.round((correctCount / questions.length) * 100) + '%';
+
+            // Generar Reporte
+            const reportDiv = document.getElementById('detailed-report');
+            reportDiv.innerHTML = '';
+            state.userAnswers.forEach((ans, i) => {
+                const item = document.createElement('div');
+                item.className = `p-4 rounded-xl text-xs ${ans.isCorrect ? 'correct-row' : 'wrong-row'}`;
+                item.innerHTML = `
+                    <p class="font-bold mb-1">${i+1}. ${ans.question}</p>
+                    <p class="opacity-80">Tu respuesta: <span class="font-semibold">${ans.selected}</span></p>
+                    ${!ans.isCorrect ? `<p class="text-sky-400 mt-1">Correcta: ${ans.correct}</p>` : ''}
+                `;
+                reportDiv.appendChild(item);
+            });
+
+            saveToLeaderboard();
+            displayLeaderboard();
+        }
+
+        function saveToLeaderboard() {
+            let scores = JSON.parse(localStorage.getItem('grafana_v2_scores')) || [];
+            scores.push({ name: state.playerName, score: state.score });
+            scores.sort((a, b) => b.score - a.score);
+            localStorage.setItem('grafana_v2_scores', JSON.stringify(scores.slice(0, 8)));
+        }
+
+        function displayLeaderboard() {
+            const scores = JSON.parse(localStorage.getItem('grafana_v2_scores')) || [];
+            const body = document.getElementById('leaderboard-body');
+            body.innerHTML = '';
+            
+            scores.forEach((s, i) => {
+                const row = document.createElement('tr');
+                row.className = s.name === state.playerName ? 'bg-sky-500/10' : '';
+                row.innerHTML = `
+                    <td class="p-4 font-bold text-slate-500">${i + 1}</td>
+                    <td class="p-4 font-medium">${s.name}</td>
+                    <td class="p-4 text-right font-bold text-sky-400">${s.score}</td>
+                `;
+                body.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>
