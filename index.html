@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Grafana Mastery | Dashboard Trivia</title>
 
-  <!-- TAILWIND: Importación correcta -->
+  <!-- TAILWIND (FORMA CORRECTA) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -33,10 +33,10 @@
     .modern-btn:hover{ background-color:rgba(255,255,255,0.1); border-color:var(--sky-500); }
     .hidden{ display:none!important; }
     #timer-progress{ height:6px; background-color:var(--sky-500); width:100%; border-radius:3px; }
-    .teacher-console-trigger{ position:fixed; bottom:20px; right:20px; }
-    .teacher-modal{
+    .teacher-console-trigger{ position:fixed; bottom:20px; right:20px; z-index:100; }
+    .teacher-modal {
       position:fixed; inset:0; background:rgba(15,23,42,0.98);
-      display:flex; align-items:center; justify-content:center; padding:20px;
+      display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000;
     }
   </style>
 </head>
@@ -44,12 +44,12 @@
 <body>
 
   <div id="app-container">
-    <!-- Pantalla de inicio -->
+
+    <!-- PANTALLA DE INICIO -->
     <div id="screen-start" class="glass-card text-center">
       <h1 class="text-3xl font-bold mb-4 text-sky-400">Grafana Mastery</h1>
       <p class="text-gray-400 mb-6 italic">¿Podrás dominar la observabilidad?</p>
-      <input id="player-name" type="text"
-        placeholder="Tu nombre o alias"
+      <input id="player-name" type="text" placeholder="Tu nombre o alias"
         class="w-full bg-black/30 border border-white/10 p-3 rounded-lg mb-4 text-center text-white">
       <button id="btn-start"
         class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold">
@@ -57,7 +57,7 @@
       </button>
     </div>
 
-    <!-- Quiz -->
+    <!-- JUEGO -->
     <div id="screen-quiz" class="glass-card hidden">
       <div class="flex justify-between text-xs mb-4 text-gray-400 font-bold uppercase">
         <span id="q-counter">Pregunta 1/10</span>
@@ -70,9 +70,10 @@
       <div id="options-container"></div>
     </div>
 
-    <!-- Resultados -->
+    <!-- RESULTADOS -->
     <div id="screen-results" class="glass-card hidden text-center">
-      <h2 class="text-2xl font-bold mb-6">¡Desafío completado!</h2>
+      <h2 class="text-2xl font-bold mb-6">¡Desafío Completado!</h2>
+
       <div class="flex justify-around mb-8">
         <div>
           <div id="res-score" class="text-4xl font-bold text-sky-400">0</div>
@@ -83,20 +84,11 @@
           <div class="text-xs text-gray-500 uppercase">Precisión</div>
         </div>
       </div>
+
       <div id="sync-status"
         class="text-xs text-sky-500 mb-6 bg-sky-500/10 py-2 rounded-lg border border-sky-500/20">
-        Enviando datos a la nube…
+        Enviando datos a la nube...
       </div>
+
       <button onclick="location.reload()"
         class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold">
-        REINTENTAR
-      </button>
-    </div>
-  </div>
-
-  <!-- Panel profesor -->
-  <div id="modal-teacher" class="teacher-modal hidden">
-    <div class="glass-card w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
-      <div class="flex justify-between mb-6">
-        <h2 class="text-2xl font-bold text-sky-400">Panel Global</h2>
-
