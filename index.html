@@ -1,186 +1,148 @@
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Grafana Mastery | Dashboard Trivia</title>
 
-<script>
-/* ============================
-   CONFIGURACIÓN SUPABASE
-============================ */
-const SUPABASE_URL = "https://wownppzsxeppfuotlpuh.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvd25wcHpzeGVwcGZ1b3RscHVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjc5NzAsImV4cCI6MjA4ODgwMzk3MH0.qiPEuSYuz6pQBBs5T89nl6jN-OHY1pnKZgeOuA7HTA8";
+  <!-- Tailwind (CDN correcto) -->
+  <script src="https://cdn.tailwindcss.com" defer></script>
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  <style>
+    :root { --slate-900:#0f172a; --slate-800:#1e293b; --sky-500:#0ea5e9; }
+    body {
+      font-family: system-ui,-apple-system,sans-serif;
+      background-color: var(--slate-900);
+      color:white; margin:0;
+      display:flex; align-items:center; justify-content:center;
+      min-height:100vh; overflow-x:hidden;
+    }
+    #app-container { width:100%; max-width:600px; padding:20px; position:relative; z-index:10; }
+    .glass-card {
+      background-color: var(--slate-800);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:1.5rem; padding:2rem;
+      box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);
+    }
+    .modern-btn{
+      background-color:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.1);
+      padding:1rem; border-radius:.75rem; cursor:pointer; width:100%;
+      text-align:left; margin-bottom:.5rem; transition:.2s; color:white;
+    }
+    .modern-btn:hover{ background-color:rgba(255,255,255,0.1); border-color:var(--sky-500); }
+    .hidden{ display:none!important; }
+    #timer-progress{ height:6px; background-color:var(--sky-500); width:100%; border-radius:3px; }
+    .teacher-console-trigger{ position:fixed; bottom:20px; right:20px; z-index:100; }
+    .teacher-modal{ position:fixed; inset:0; background:rgba(15,23,42,0.98); z-index:1000;
+      display:flex; align-items:center; justify-content:center; padding:20px; }
+    .custom-scroll::-webkit-scrollbar{ width:6px; }
+    .custom-scroll::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.1); border-radius:10px; }
+  </style>
+</head>
+<body>
 
-/* ================
-   CREAR TABLA SI NO EXISTE
-================ */
-async function ensureTable() {
-  const { error } = await supabase.rpc("exec", {
-    query: `
-      create table if not exists public.scores (
-        id uuid default gen_random_uuid() primary key,
-        nombre text,
-        puntos int,
-        aciertos int,
-        fecha timestamptz default now()
-      );
-    `
-  });
-}
-ensureTable();
+  <div id="app-container">
+    <!-- Inicio -->
+    <div id="screen-start" class="glass-card text-center">
+      <h1 class="text-3xl font-bold mb-4 text-sky-400">Grafana Mastery</h1>
+      <p class="text-gray-400 mb-6 italic">¿Podrás dominar la observabilidad?</p>
+      <input id="player-name" type="text" placeholder="Tu nombre o alias"
+        class="w-full bg-black/30 border border-white/10 p-3 rounded-lg mb-4 text-center text-white focus:outline-none focus:border-sky-500">
+      <button id="btn-start"
+        class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold transition-all active:scale-95">
+        COMENZAR DESAFÍO
+      </button>
+      <p id="startup-status" class="mt-3 text-xs text-gray-400"></p>
+    </div>
 
-/* ==========================
-  GUARDAR RESULTADO EN LA NUBE
-===========================*/
-async function saveToCloud(name, score, correct) {
-  const status = document.getElementById("sync-status");
+    <!-- Juego -->
+    <div id="screen-quiz" class="glass-card hidden">
+      <div class="flex justify-between text-xs mb-4 text-gray-400 font-bold uppercase">
+        <span id="q-counter">Pregunta 1/10</span>
+        <span id="q-score">Puntos: 0</span>
+      </div>
+      <div class="w-full bg-gray-700 h-1.5 rounded-full mb-6">
+        <div id="timer-progress"></div>
+      </div>
+      <h2 id="q-text" class="text-xl font-semibold mb-6 leading-tight">Cargando...</h2>
+      <div id="options-container"></div>
+    </div>
 
-  const { error } = await supabase.from("scores").insert({
-    nombre: name,
-    puntos: score,
-    aciertos: correct
-  });
+    <!-- Resultados -->
+    <div id="screen-results" class="glass-card hidden text-center">
+      <h2 class="text-2xl font-bold mb-6">¡Desafío Completado!</h2>
+      <div class="flex justify-around mb-8">
+        <div class="text-center">
+          <div id="res-score" class="text-4xl font-bold text-sky-400">0</div>
+          <div class="text-xs text-gray-500 mt-1 uppercase">Puntuación</div>
+        </div>
+        <div class="text-center">
+          <div id="res-acc" class="text-4xl font-bold text-purple-400">0%</div>
+          <div class="text-xs text-gray-500 mt-1 uppercase">Precisión</div>
+        </div>
+      </div>
+      <div id="sync-status"
+        class="text-xs text-sky-500 mb-6 bg-sky-500/10 py-2 rounded-lg border border-sky-500/20">
+        Enviando datos a la nube...
+      </div>
+      <button onclick="location.reload()"
+        class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold">
+        REINTENTAR
+      </button>
+    </div>
+  </div>
 
-  if (error) {
-    status.innerText = "❌ Error al sincronizar";
-    status.style.color = "red";
-  } else {
-    status.innerText = "✓ Sincronizado correctamente";
-    status.style.color = "#4ade80";
-  }
-}
+  <!-- Consola del Profesor -->
+  <div id="modal-teacher" class="teacher-modal hidden">
+    <div class="glass-card w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col border-sky-500/30">
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-sky-400">Panel de Control Global</h2>
+          <p class="text-xs text-gray-500">Resultados de todas las ubicaciones</p>
+        </div>
+        <button onclick="toggleTeacherConsole()" class="bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg text-sm">
+          Cerrar
+        </button>
+      </div>
+      <div class="overflow-x-auto overflow-y-auto pr-2 custom-scroll flex-grow">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-black/40 text-gray-400 uppercase text-[10px] tracking-widest sticky top-0">
+            <tr>
+              <th class="p-4">Alumno</th>
+              <th class="p-4">Puntuación</th>
+              <th class="p-4">Aciertos</th>
+              <th class="p-4">Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-data" class="divide-y divide-white/5"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
-/* ==========================
-   LEER TABLA (polling)
-==========================*/
-async function loadLeaderboard() {
-  const { data, error } = await supabase
-    .from("scores")
-    .select("*")
-    .order("puntos", { ascending: false });
+  <!-- Botón del profesor -->
+  <div class="teacher-console-trigger">
+    <button onclick="toggleTeacherConsole()"
+      class="w-14 h-14 bg-sky-600 hover:bg-sky-400 rounded-full flex items-center justify-center shadow-2xl text-2xl">
+      📊
+    </button>
+  </div>
 
-  if (!error) updateLeaderboardUI(data);
-}
+  <!-- Supabase JS (CDN correcto) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 
-/* ==========================
-   POLLING CADA 2 SEGUNDOS
-==========================*/
-setInterval(loadLeaderboard, 2000);
+  <!-- Tu lógica -->
+  <script>
+    window.addEventListener('DOMContentLoaded', async () => {
+      const startup = document.getElementById('startup-status');
 
-/* ==========================
-   ACTUALIZAR TABLA PROFESOR
-==========================*/
-function updateLeaderboardUI(list) {
-  const tbody = document.getElementById("leaderboard-data");
-  tbody.innerHTML = "";
+      // 1) Comprobación de que la librería de Supabase está cargada
+      if (!window.supabase || !window.supabase.createClient) {
+        startup.textContent = '❌ No se ha podido cargar Supabase JS (CDN). Revisa tu conexión o el bloque <script src>.';
+        console.error('Supabase JS no cargado');
+        return;
+      }
 
-  list.forEach(entry => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="p-4">${entry.nombre}</td>
-      <td class="p-4 text-sky-400 font-bold">${entry.puntos}</td>
-      <td class="p-4">${entry.aciertos}/10</td>
-      <td class="p-4">${new Date(entry.fecha).toLocaleString("es-ES")}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-/* ==========================
-   LÓGICA DEL QUIZ
-==========================*/
-
-const questions = [
-{ q:"¿Qué herramienta se usa para dashboards?", o:["Logstash","Kibana","Superset","Grafana"], a:3 },
-{ q:"¿Qué destaca en Grafana?", o:["SQL only","Sin alertas","Múltiples fuentes","Solo logs"], a:2 },
-{ q:"¿Qué puede mostrar Grafana?", o:["Solo logs","Solo CPU","Gráficos/tablas/etc","Solo red"], a:2 },
-{ q:"Compatibilidad OS?", o:["Windows","Linux","Muchos sistemas","Android"], a:2 },
-{ q:"Fuerte de Grafana?", o:["Audio","Reconocimiento","Visualización multi‑origen","Compilar"], a:2 },
-{ q:"Grafana es:", o:["BD","Observabilidad","Servicio Cloud","Lenguaje"], a:1 },
-{ q:"Característica:", o:["Encriptación","Alertas","Almacenamiento","ML"], a:1 },
-{ q:"Plantilla de dashboard:", o:["Estático","Variables interactivas","Fuente","PDF"], a:1 },
-{ q:"Grafana vs Kibana:", o:["Métricas vs logs","Libre vs no","Visualiza vs ingesta","Iguales"], a:0 },
-{ q:"Métricas:", o:["Cualitativos","Cuantitativos con tiempo","Logs","Feedback"], a:1 }
-];
-
-let idx = 0, score = 0, correct = 0, timer, timeLeft = 15, playerName = "";
-
-/* ---------------------- */
-document.getElementById("btn-start").onclick = () => {
-  playerName = document.getElementById("player-name").value.trim();
-  if (!playerName) return;
-
-  document.getElementById("screen-start").classList.add("hidden");
-  document.getElementById("screen-quiz").classList.remove("hidden");
-  showQuestion();
-};
-
-function showQuestion() {
-  if (idx >= questions.length) return showResults();
-  const q = questions[idx];
-
-  document.getElementById("q-counter").innerText = `Pregunta ${idx+1}/10`;
-  document.getElementById("q-text").innerText = q.q;
-
-  const cont = document.getElementById("options-container");
-  cont.innerHTML = "";
-
-  q.o.forEach((opt, i) => {
-    const btn = document.createElement("button");
-    btn.className = "modern-btn";
-    btn.innerText = opt;
-    btn.onclick = () => checkAnswer(i);
-    cont.appendChild(btn);
-  });
-
-  resetTimer();
-}
-
-function resetTimer() {
-  timeLeft = 15;
-  const bar = document.getElementById("timer-progress");
-  bar.style.transition = "none";
-  bar.style.width = "100%";
-
-  setTimeout(() => {
-    bar.style.transition = "width 15s linear";
-    bar.style.width = "0%";
-  }, 50);
-
-  clearInterval(timer);
-  timer = setInterval(() => {
-    timeLeft--;
-    if (timeLeft <= 0) checkAnswer(-1);
-  }, 1000);
-}
-
-function checkAnswer(answerIdx) {
-  clearInterval(timer);
-  const q = questions[idx];
-
-  if (answerIdx === q.a) {
-    score += 100 + timeLeft * 5;
-    correct++;
-  }
-
-  document.getElementById("q-score").innerText = `Puntos: ${score}`;
-  idx++;
-  showQuestion();
-}
-
-function toggleTeacherConsole() {
-  const modal = document.getElementById("modal-teacher");
-  modal.classList.toggle("hidden");
-  if (!modal.classList.contains("hidden")) loadLeaderboard();
-}
-
-async function showResults() {
-  document.getElementById("screen-quiz").classList.add("hidden");
-  document.getElementById("screen-results").classList.remove("hidden");
-
-  document.getElementById("res-score").innerText = score;
-  document.getElementById("res-acc").innerText = Math.round(correct / 10 * 100) + "%";
-
-  await saveToCloud(playerName, score, correct);
-}
-
-</script>
-``
+      // 2) Config Supabase
+      const SUPABASE_URL = "https://wownppzsxeppfuotlpuh.supabase.co";
