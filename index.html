@@ -1,94 +1,32 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Grafana Mastery | Dashboard Trivia</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TEST SCRIPTS</title>
 
-  <!-- TAILWIND (FORMA CORRECTA) -->
+  <!-- TAILWIND CORRECTO -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <style>
-    :root { --slate-900:#0f172a; --slate-800:#1e293b; --sky-500:#0ea5e9; }
-    body {
-      font-family: system-ui,-apple-system,sans-serif;
-      background-color: var(--slate-900);
-      color:white; margin:0;
-      display:flex; align-items:center; justify-content:center;
-      min-height:100vh; overflow-x:hidden;
-    }
-    #app-container { width:100%; max-width:600px; padding:20px; }
-    .glass-card {
-      background-color: var(--slate-800);
-      border:1px solid rgba(255,255,255,0.1);
-      border-radius:1.5rem; padding:2rem;
-      box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);
-    }
-    .modern-btn{
-      background-color:rgba(255,255,255,0.05);
-      border:1px solid rgba(255,255,255,0.1);
-      padding:1rem; border-radius:.75rem; cursor:pointer; width:100%;
-      text-align:left; margin-bottom:.5rem; transition:.2s; color:white;
-    }
-    .modern-btn:hover{ background-color:rgba(255,255,255,0.1); border-color:var(--sky-500); }
-    .hidden{ display:none!important; }
-    #timer-progress{ height:6px; background-color:var(--sky-500); width:100%; border-radius:3px; }
-    .teacher-console-trigger{ position:fixed; bottom:20px; right:20px; z-index:100; }
-    .teacher-modal {
-      position:fixed; inset:0; background:rgba(15,23,42,0.98);
-      display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000;
-    }
-  </style>
+  <!-- SUPABASE CORRECTO -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
-<body>
+<body class="bg-slate-900 text-white p-10">
 
-  <div id="app-container">
+  <h1 class="text-3xl mb-4">Prueba de scripts</h1>
 
-    <!-- PANTALLA DE INICIO -->
-    <div id="screen-start" class="glass-card text-center">
-      <h1 class="text-3xl font-bold mb-4 text-sky-400">Grafana Mastery</h1>
-      <p class="text-gray-400 mb-6 italic">¿Podrás dominar la observabilidad?</p>
-      <input id="player-name" type="text" placeholder="Tu nombre o alias"
-        class="w-full bg-black/30 border border-white/10 p-3 rounded-lg mb-4 text-center text-white">
-      <button id="btn-start"
-        class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold">
-        COMENZAR DESAFÍO
-      </button>
-    </div>
+  <button id="btn" class="px-4 py-2 bg-sky-600 rounded-lg">
+    Probar botón
+  </button>
 
-    <!-- JUEGO -->
-    <div id="screen-quiz" class="glass-card hidden">
-      <div class="flex justify-between text-xs mb-4 text-gray-400 font-bold uppercase">
-        <span id="q-counter">Pregunta 1/10</span>
-        <span id="q-score">Puntos: 0</span>
-      </div>
-      <div class="w-full bg-gray-700 h-1.5 rounded-full mb-6">
-        <div id="timer-progress"></div>
-      </div>
-      <h2 id="q-text" class="text-xl font-semibold mb-6">Cargando...</h2>
-      <div id="options-container"></div>
-    </div>
+  <p id="estado" class="mt-4 text-sky-300"></p>
 
-    <!-- RESULTADOS -->
-    <div id="screen-results" class="glass-card hidden text-center">
-      <h2 class="text-2xl font-bold mb-6">¡Desafío Completado!</h2>
+  <script>
+    document.getElementById("btn").onclick = () => {
+      document.getElementById("estado").textContent = "✅ El JavaScript funciona";
+    };
 
-      <div class="flex justify-around mb-8">
-        <div>
-          <div id="res-score" class="text-4xl font-bold text-sky-400">0</div>
-          <div class="text-xs text-gray-500 uppercase">Puntuación</div>
-        </div>
-        <div>
-          <div id="res-acc" class="text-4xl font-bold text-purple-400">0%</div>
-          <div class="text-xs text-gray-500 uppercase">Precisión</div>
-        </div>
-      </div>
-
-      <div id="sync-status"
-        class="text-xs text-sky-500 mb-6 bg-sky-500/10 py-2 rounded-lg border border-sky-500/20">
-        Enviando datos a la nube...
-      </div>
-
-      <button onclick="location.reload()"
-        class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold">
+    // probar Supabase
+    const client = supabase.createClient(
+      "https://wownppzsxeppfuotlpuh.supabase.co",
