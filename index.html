@@ -1,32 +1,332 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TEST SCRIPTS</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cuestionario Grafana</title>
 
-  <!-- TAILWIND CORRECTO -->
-  <script src="https://cdn.tailwindcss.com"></script>
+<style>
+/* =====================
+   ESTILOS BONITOS
+   (Tailwind-like sin CDN)
+===================== */
 
-  <!-- SUPABASE CORRECTO -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #0f172a;
+  color: white;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.glass {
+  background: #1e293b;
+  padding: 2rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  max-width: 600px;
+  width: 100%;
+}
+
+h1, h2 {
+  margin-top: 0;
+}
+
+.btn {
+  display:block;
+  width:100%;
+  background:#0284c7;
+  padding:0.9rem;
+  border-radius:0.75rem;
+  border:none;
+  font-weight:bold;
+  color:white;
+  font-size:1rem;
+  cursor:pointer;
+  transition:0.2s;
+  margin-top:1rem;
+}
+.btn:hover { background:#0ea5e9; }
+
+.option-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: .5rem;
+  transition: .2s;
+  color: white;
+  width: 100%;
+}
+.option-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: #0ea5e9;
+}
+
+.hidden { display:none !important; }
+
+.code-box {
+  background:#0c4a6e;
+  padding:.75rem;
+  border-radius:.5rem;
+  text-align:center;
+  font-weight:bold;
+  margin-top:1rem;
+}
+</style>
+
 </head>
 
-<body class="bg-slate-900 text-white p-10">
+<body>
 
-  <h1 class="text-3xl mb-4">Prueba de scripts</h1>
+<div class="glass" id="screen-start">
+  <h1>Cuestionario Grafana</h1>
 
-  <button id="btn" class="px-4 py-2 bg-sky-600 rounded-lg">
-    Probar botón
-  </button>
+  <div id="host-section" class="hidden">
+    <p>Eres la profesora. Se ha creado la sala:</p>
+    <div id="session-code" class="code-box"></div>
+    <p>Comparte este enlace con tus alumnas:</p>
+    <input id="session-link" style="width:100%; padding:.5rem;" readonly />
+    <button class="btn" id="btn-start-session">INICIAR SESIÓN</button>
+  </div>
 
-  <p id="estado" class="mt-4 text-sky-300"></p>
+  <div id="student-section" class="hidden">
+    <p>Sala: <span id="student-session"></span></p>
+    <p><b>Esperando a que la profesora inicie…</b></p>
+  </div>
 
-  <script>
-    document.getElementById("btn").onclick = () => {
-      document.getElementById("estado").textContent = "✅ El JavaScript funciona";
-    };
+  <div id="name-section" class="hidden">
+    <p>Introduce tu nombre:</p>
+    <input id="player-name" style="width:100%; padding:0.75rem; border-radius:.5rem;" placeholder="Tu nombre" />
+    <button class="btn" id="btn-begin">Comenzar cuestionario</button>
+  </div>
+</div>
 
-    // probar Supabase
-    const client = supabase.createClient(
-      "https://wownppzsxeppfuotlpuh.supabase.co",
+<div class="glass hidden" id="screen-quiz">
+  <div id="q-counter"></div>
+  <h2 id="q-text"></h2>
+  <div id="options"></div>
+</div>
+
+<div class="glass hidden" id="screen-results">
+  <h2>¡Completado!</h2>
+  <p>Puntuación: <span id="score"></span></p>
+  <p>Aciertos: <span id="correct"></span>/10</p>
+  <button class="btn" onclick="location.reload()">Reintentar</button>
+</div>
+
+<!-- PANEL PROFESOR -->
+<div class="glass hidden" id="screen-leaderboard">
+  <h2>Ranking — Sala <span id="lb-session"></span></h2>
+  <div id="leaderboard"></div>
+</div>
+
+<script>
+/* ============================
+   CONFIG SUPABASE (TU PROYECTO)
+============================ */
+const SUPA_URL = "https://wownppzsxeppfuotlpuh.supabase.co";
+const SUPA_KEY =
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvd25wcHpzeGVwcGZ1b3RscHVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjc5NzAsImV4cCI6MjA4ODgwMzk3MH0.qiPEuSYuz6pQBBs5T89nl6jN-OHY1pnKZgeOuA7HTA8";
+
+/* ============================
+   CLIENTE SUPABASE SIN CDN
+============================ */
+// Esto es una versión reducida del cliente Supabase REST
+async function supaInsert(table, obj) {
+  return fetch(`${SUPA_URL}/rest/v1/${table}`, {
+    method:"POST",
+    headers:{
+      "apikey":SUPA_KEY,
+      "Authorization":"Bearer "+SUPA_KEY,
+      "Content-Type":"application/json",
+      "Prefer":"return=representation"
+    },
+    body: JSON.stringify(obj)
+  }).then(r=>r.json());
+}
+
+async function supaSelect(table, filter="") {
+  return fetch(`${SUPA_URL}/rest/v1/${table}${filter}`, {
+    headers:{
+      "apikey":SUPA_KEY,
+      "Authorization":"Bearer "+SUPA_KEY
+    }
+  }).then(r=>r.json());
+}
+
+async function supaUpdate(table, values, filter) {
+  return fetch(`${SUPA_URL}/rest/v1/${table}${filter}`, {
+    method:"PATCH",
+    headers:{
+      "apikey":SUPA_KEY,
+      "Authorization":"Bearer "+SUPA_KEY,
+      "Content-Type":"application/json"
+    },
+    body: JSON.stringify(values)
+  }).then(r=>r.json());
+}
+
+/* ============================
+       SISTEMA DE SESIONES
+============================ */
+function getSessionFromURL(){
+  const p=new URLSearchParams(location.search);
+  return p.get("s")?.toUpperCase() || null;
+}
+
+function generateSessionId(){
+  return Math.random().toString(36).substring(2,8).toUpperCase();
+}
+
+let SESSION_ID=null;
+let IS_HOST=false;
+let PLAYER="";
+
+async function initSession(){
+  SESSION_ID=getSessionFromURL();
+
+  if(!SESSION_ID){
+    // PROFESORA
+    IS_HOST=true;
+    SESSION_ID=generateSessionId();
+
+    await supaInsert("sessions",{ id: SESSION_ID, started:false });
+
+    document.getElementById("host-section").classList.remove("hidden");
+    document.getElementById("session-code").textContent=SESSION_ID;
+    document.getElementById("session-link").value=
+      location.origin+location.pathname+"?s="+SESSION_ID;
+  } else {
+    // ALUMNAS
+    document.getElementById("student-section").classList.remove("hidden");
+    document.getElementById("student-section").querySelector("#student-session").textContent=SESSION_ID;
+    waitForStart();
+  }
+}
+
+async function waitForStart(){
+  const loop = async ()=>{
+    const data = await supaSelect("sessions",`?id=eq.${SESSION_ID}`);
+    if(data[0]?.started){
+      // Profe ha iniciado
+      document.getElementById("student-section").classList.add("hidden");
+      document.getElementById("name-section").classList.remove("hidden");
+      return;
+    }
+    setTimeout(loop, 1500);
+  };
+  loop();
+}
+
+document.getElementById("btn-start-session")?.addEventListener("click",async()=>{
+  await supaUpdate("sessions",{ started:true },`?id=eq.${SESSION_ID}`);
+  document.getElementById("host-section").classList.add("hidden");
+  document.getElementById("name-section").classList.remove("hidden");
+});
+
+/* ============================
+           QUIZ
+============================ */
+const QUESTIONS=[
+{q:"¿Qué herramienta se usa para dashboards?",o:["Logstash","Kibana","Superset","Grafana"],a:3},
+{q:"¿Qué destaca en Grafana?",o:["SQL only","Sin alertas","Múltiples fuentes","Solo logs"],a:2},
+{q:"¿Qué puede mostrar Grafana?",o:["Solo logs","Solo CPU","Gráficos/tablas/etc","Solo red"],a:2},
+{q:"Compatibilidad OS?",o:["Windows","Linux","Muchos sistemas","Android"],a:2},
+{q:"Fuerte de Grafana?",o:["Audio","Reconocimiento","Multi‑origen","Compilar"],a:2},
+{q:"Grafana es:",o:["BD","Observabilidad","Servicio Cloud","Lenguaje"],a:1},
+{o:"Encriptación","Alertas","Almacenamiento","ML",a:1},
+{q:"Plantilla:",o:["Estático","Variables","Fuente","PDF"],a:1},
+{q:"Grafana vs Kibana?",o:["Métricas vs logs","Libre vs no","Visualiza vs ingesta","Iguales"],a:0},
+{q:"Métricas:",o:["Cualitativos","Cuantitativos","Logs","Feedback"],a:1}
+];
+
+let index=0, score=0, correct=0;
+
+document.getElementById("btn-begin").addEventListener("click",()=>{
+  PLAYER=document.getElementById("player-name").value.trim();
+  if(!PLAYER) return;
+
+  document.getElementById("name-section").classList.add("hidden");
+  document.getElementById("screen-start").classList.add("hidden");
+  document.getElementById("screen-quiz").classList.remove("hidden");
+  showQuestion();
+});
+
+function showQuestion(){
+  if(index>=QUESTIONS.length) return endQuiz();
+
+  const q=QUESTIONS[index];
+  document.getElementById("q-counter").textContent=`Pregunta ${index+1}/10`;
+  document.getElementById("q-text").textContent=q.q;
+
+  const box=document.getElementById("options");
+  box.innerHTML="";
+  q.o.forEach((t,i)=>{
+    const b=document.createElement("button");
+    b.className="option-btn";
+    b.textContent=t;
+    b.onclick=()=>{ check(i); };
+    box.appendChild(b);
+  });
+}
+
+function check(i){
+  if(i===QUESTIONS[index].a){
+    score+=100;
+    correct++;
+  }
+  index++;
+  showQuestion();
+}
+
+async function endQuiz(){
+  document.getElementById("screen-quiz").classList.add("hidden");
+  document.getElementById("screen-results").classList.remove("hidden");
+
+  document.getElementById("score").textContent=score;
+  document.getElementById("correct").textContent=correct;
+
+  await supaInsert("scores",{
+    session_id:SESSION_ID,
+    nombre:PLAYER,
+    puntos:score,
+    aciertos:correct
+  });
+
+  showLeaderboard();
+}
+
+/* ============================
+         RANKING
+============================ */
+async function showLeaderboard(){
+  document.getElementById("screen-results").classList.add("hidden");
+  document.getElementById("screen-leaderboard").classList.remove("hidden");
+  document.getElementById("lb-session").textContent=SESSION_ID;
+
+  const lb=document.getElementById("leaderboard");
+  lb.innerHTML="Cargando…";
+
+  setInterval(async()=>{
+    const data=await supaSelect("scores",`?session_id=eq.${SESSION_ID}&order=puntos.desc`);
+    lb.innerHTML=data.map(r=>`
+      <div style="margin-bottom:.5rem; padding:.5rem; background:#0c4a6e; border-radius:.5rem;">
+        ${r.nombre} — <b>${r.puntos}</b> (${r.aciertos}/10)
+      </div>
+    `).join("");
+
+  },2000);
+}
+
+/* INICIO */
+initSession();
+</script>
+
+</body>
+</html>
