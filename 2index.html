@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grafana Mastery | Dashboard Trivia</title>
+    
+    <!-- Scripts externos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        :root {
+            --slate-900: #0f172a;
+            --slate-800: #1e293b;
+            --sky-500: #0ea5e9;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--slate-900);
+            color: white;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        #app-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .glass-card {
+            background-color: var(--slate-800);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+        }
+
+        .modern-btn {
+            background-color: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            margin-bottom: 0.5rem;
+            transition: 0.2s;
+            color: white;
+        }
+
+        .modern-btn:hover {
+            background-color: rgba(255,255,255,0.1);
+            border-color: var(--sky-500);
+        }
+
+        .hidden { display: none !important; }
+
+        #timer-progress {
+            height: 6px;
+            background-color: var(--sky-500);
+            width: 100%;
+            border-radius: 3px;
+        }
+
+        .teacher-console-trigger {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .teacher-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.98);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <!-- Pantalla de Inicio -->
+        <div id="screen-start" class="glass-card text-center">
+            <h1 class="text-3xl font-bold mb-4 text-sky-400">Grafana Mastery</h1>
+            <p class="text-gray-400 mb-6 italic">¿Podrás dominar la observabilidad?</p>
+            <input type="text" id="player-name" placeholder="Tu nombre o alias" 
+                class="w-full bg-black/30 border border-white/10 p-3 rounded-lg mb-4 text-center text-white focus:outline-none focus:border-sky-500">
+            <button id="btn-start" class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-lg font-bold transition-all transform active:scale-95 shadow-lg shadow-sky-900/20">
+                COMENZAR DESAFÍO
+            </button>
+            <p class="mt-4 text-[10px] text-gray-500 uppercase tracking-widest">Sincronización Global Activa</p>
+        </div>
+
+        <!-- Pantalla de Juego -->
+        <div id="screen-quiz" class="glass-card hidden">
+            <div class="flex justify-between text-xs mb-4 text-gray-400 font-bold uppercase">
+                <span id="q-counter">Pregunta 1/10</span>
+                <span id="q-score">Puntos: 0</span>
+            </div>
+            <div class="w-full bg-gray-700 h-1.5 rounded-full mb-6">
+                <div id="timer-progress"></div>
+            </div>
+            <h2 id="q-text" class="text-xl font-semibold mb-6 leading-tight">Cargando...</h2>
+            <div id="options-container"></div>
+        </div>
+
+        <!-- Pantalla de Resultados -->
+        <div id="screen-results" class="glass-card hidden text-center">
+            <h2 class="text-2xl font-bold mb-6">¡Desafío Completado!</h2>
+            <div class="flex justify-around mb-8">
+                <div class="text-center">
+                    <div id="res-score" class="text-4xl font-bold text-sky-400">0</div>
+                    <div class="text-xs text-gray-500 mt-1 uppercase">Puntuación</div>
+                </div>
+                <div class="text-center">
+                    <div id="res-acc" class="text-4xl font-bold text-purple-400">0%</div>
+                    <div class="text-xs text-gray-500 mt-1 uppercase">Precisión</div>
+                </div>
+            </div>
+            <div id="sync-status" class="text-xs text-sky-500 mb-6 bg-sky-500/10 py-2 rounded-lg border border-sky-500/20">
+                Enviando datos a la nube...
+            </div>
+            <button onclick="location.reload()" class="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-bold transition-colors">
+                REINTENTAR
+            </button>
+        </div>
+    </div>
+
+    <!-- Consola del Profesor -->
+    <div id="modal-teacher" class="teacher-modal hidden">
+        <div class="glass-card w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col border-sky-500/30">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-sky-400">Panel de Control Global</h2>
+                    <p class="text-xs text-gray-500">Monitorizando resultados de todas las ubicaciones</p>
+                </div>
+                <button onclick="toggleTeacherConsole()" class="bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg text-sm transition-colors">Cerrar</button>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto pr-2 custom-scroll flex-grow">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-black/40 text-gray-400 uppercase text-[10px] tracking-widest sticky top-0">
+                        <tr>
+                            <th class="p-4 border-b border-white/10">Alumno</th>
+                            <th class="p-4 border-b border-white/10">Puntuación</th>
+                            <th class="p-4 border-b border-white/10">Aciertos</th>
+                            <th class="p-4 border-b border-white/10">Fecha e Intento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-data" class="divide-y divide-white/5">
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 pt-4 border-t border-white/10 text-[10px] text-gray-500 flex justify-between uppercase tracking-tighter">
+                <span id="connection-status">Estado: Conectando...</span>
+                <span id="last-update">Última actualización: --:--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón del profesor -->
+    <div class="teacher-console-trigger">
+        <button onclick="toggleTeacherConsole()" class="w-14 h-14 bg-sky-600 hover:bg-sky-400 rounded-full flex items-center justify-center shadow-2xl shadow-sky-500/50 transition-all hover:rotate-12 transform hover:scale-110">
+            <span class="text-2xl">📊</span>
+        </button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Obtención robusta del App ID (Regla 1)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-mastery-default';
+        let db, auth;
+        let currentUser = null;
+        window.lastCloudData = [];
+
+        const setupFirebase = async () => {
+            try {
+                if (typeof __firebase_config !== 'undefined') {
+                    const config = JSON.parse(__firebase_config);
+                    const app = initializeApp(config);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // Regla 3: Autenticación obligatoria antes de cualquier query
+                    const initAuth = async () => {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    };
+                    
+                    await initAuth();
+
+                    onAuthStateChanged(auth, (user) => {
+                        currentUser = user;
+                        if (user) {
+                            document.getElementById('connection-status').innerText = "Estado: Red Global Activa (" + user.uid.substring(0,6) + ")";
+                            setupRealtimeListener(); 
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
+                document.getElementById('connection-status').innerText = "Error de Conexión";
+            }
+        };
+
+        const setupRealtimeListener = () => {
+            if (!db || !currentUser) return;
+            
+            // Regla 1: Ruta exacta pública
+            const scoresPath = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+            
+            // Escuchador de tiempo real con manejo de errores obligatorio
+            onSnapshot(scoresPath, (snapshot) => {
+                window.lastCloudData = [];
+                snapshot.forEach(doc => {
+                    window.lastCloudData.push(doc.data());
+                });
+                refreshLeaderboard();
+            }, (err) => {
+                console.error("Firestore Permission/Path Error:", err);
+                document.getElementById('connection-status').innerText = "Error: Sin acceso a datos globales";
+            });
+        };
+
+        const questions = [
+            { q: "¿Qué herramienta se utiliza principalmente para crear dashboards con múltiples orígenes de datos?", o: ["Logstash", "Kibana", "Apache Superset", "Grafana"], a: 3 },
+            { q: "¿Qué característica destaca en Grafana?", o: ["Solo admite SQL", "No soporta alertas", "Datos de múltiples fuentes en un mismo dashboard", "Solo para logs de Apache"], a: 2 },
+            { q: "¿Qué tipo de datos puede representar un dashboard en Grafana?", o: ["Solo logs", "Solo métricas de red", "Tablas, gráficos, mapas térmicos y más", "Solo SO"], a: 2 },
+            { q: "¿Qué sistema operativo es compatible con Grafana?", o: ["Solo Windows", "Solo Linux", "Múltiples sistemas operativos", "Solo Android"], a: 2 },
+            { q: "¿Cuál es uno de los puntos fuertes de Grafana?", o: ["Procesamiento de audio", "Reconocimiento facial", "Visualización simultánea de diferentes orígenes", "Compilación de scripts"], a: 2 },
+            { q: "¿Qué es Grafana?", o: ["Gestor de BD", "Plataforma de código abierto para monitoreo y observabilidad", "Servicio Cloud", "Lenguaje de programación"], a: 1 },
+            { q: "¿Cuál de las siguientes es una característica de Grafana?", o: ["Encriptación", "Alertas", "Almacenamiento masivo", "Machine Learning"], a: 1 },
+            { q: "¿Qué es una plantilla de dashboard en Grafana?", o: ["Dashboard estático", "Dashboards interactivos con variables", "Creador de fuentes", "Exportador de PDF"], a: 1 },
+            { q: "¿Principal diferencia entre Grafana y Kibana?", o: ["Grafana métricas, Kibana registros", "Grafana es libre, Kibana no", "Grafana visualiza, Kibana ingesta", "Son iguales"], a: 0 },
+            { q: "¿Qué son las métricas en Grafana?", o: ["Datos cualitativos", "Mediciones cuantitativas en el tiempo", "Entradas de registros", "Feedback de usuarios"], a: 1 }
+        ];
+
+        let currentIdx = 0, score = 0, correctAnswers = 0, timer, timeLeft = 15, playerName = "";
+
+        document.getElementById('btn-start').onclick = () => {
+            playerName = document.getElementById('player-name').value.trim();
+            if(!playerName) {
+                document.getElementById('player-name').classList.add('border-red-500');
+                return;
+            }
+            document.getElementById('screen-start').classList.add('hidden');
+            document.getElementById('screen-quiz').classList.remove('hidden');
+            showQuestion();
+        };
+
+        function showQuestion() {
+            if(currentIdx >= questions.length) return showResults();
+            const q = questions[currentIdx];
+            document.getElementById('q-counter').innerText = `Pregunta ${currentIdx + 1}/${questions.length}`;
+            document.getElementById('q-text').innerText = q.q;
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            q.o.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'modern-btn';
+                btn.innerText = opt;
+                btn.onclick = () => checkAnswer(i);
+                container.appendChild(btn);
+            });
+            resetTimer();
+        }
+
+        function resetTimer() {
+            timeLeft = 15;
+            const bar = document.getElementById('timer-progress');
+            bar.style.transition = 'none'; bar.style.width = '100%';
+            setTimeout(() => { bar.style.transition = 'width 15s linear'; bar.style.width = '0%'; }, 50);
+            clearInterval(timer);
+            timer = setInterval(() => { timeLeft--; if(timeLeft <= 0) checkAnswer(-1); }, 1000);
+        }
+
+        function checkAnswer(idx) {
+            clearInterval(timer);
+            const q = questions[currentIdx];
+            if(idx === q.a) { score += 100 + (timeLeft * 5); correctAnswers++; }
+            document.getElementById('q-score').innerText = `Puntos: ${score}`;
+            currentIdx++; showQuestion();
+        }
+
+        async function showResults() {
+            document.getElementById('screen-quiz').classList.add('hidden');
+            document.getElementById('screen-results').classList.remove('hidden');
+            document.getElementById('res-score').innerText = score;
+            document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
+            
+            saveLocalScore(playerName, score, correctAnswers);
+            await cloudSync(playerName, score, correctAnswers);
+        }
+
+        const cloudSync = async (name, pts, correct) => {
+            if (!db || !currentUser) return;
+            const status = document.getElementById('sync-status');
+            try {
+                // Registro de documento en ruta compartida (Regla 1)
+                const docId = `${currentUser.uid}_${Date.now()}`;
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docId), {
+                    nombre: name,
+                    puntos: pts,
+                    aciertos: correct,
+                    fecha: new Date().toISOString(),
+                    uid: currentUser.uid
+                });
+                status.innerText = "✓ Sincronizado con el Panel del Profesor";
+                status.className = "text-xs text-green-400 mb-6 bg-green-400/10 py-2 rounded-lg border border-green-400/20";
+            } catch (e) {
+                console.error("Sync Error:", e);
+                status.innerText = "Error: Los compañeros no verán este resultado.";
+            }
+        };
+
+        function saveLocalScore(name, pts, correct) {
+            const scores = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
+            scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString(), local: true });
+            localStorage.setItem('grafana_v4_local', JSON.stringify(scores));
+            refreshLeaderboard();
+        }
+
+        function refreshLeaderboard() {
+            const local = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
+            const cloud = window.lastCloudData || [];
+            
+            // Combinar y eliminar duplicados basados en nombre y fecha exacta
+            const combined = [...local, ...cloud];
+            const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
+            updateLeaderboardUI(unique);
+        }
+
+        function updateLeaderboardUI(data) {
+            const tbody = document.getElementById('leaderboard-data');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            // Ordenar por puntos (Regla 2: Ordenar en memoria JS)
+            data.sort((a, b) => b.puntos - a.puntos);
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic">Esperando que algún alumno complete el test...</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
+                const dateObj = new Date(item.fecha);
+                const fechaStr = dateObj.toLocaleDateString('es-ES');
+                const horaStr = dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                
+                // Etiqueta visual para distinguir tus propios datos de los de otros
+                const isMine = item.uid === (currentUser?.uid) || item.local;
+
+                tr.innerHTML = `
+                    <td class="p-4">
+                        <div class="font-bold ${isMine ? 'text-sky-400' : 'text-white'} flex items-center gap-2">
+                            ${item.nombre}
+                            ${isMine ? '<span class="text-[8px] bg-sky-500/20 px-1 rounded">TÚ</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="p-4 text-sky-400 font-mono font-bold text-lg">${item.puntos}</td>
+                    <td class="p-4 text-gray-400">${item.aciertos}/10</td>
+                    <td class="p-4">
+                        <div class="text-sky-300 font-bold text-[10px] uppercase tracking-wider mb-0.5">${fechaStr}</div>
+                        <div class="text-gray-400 text-xs">${horaStr}</div>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('last-update').innerText = `Última actualización: ${new Date().toLocaleTimeString()}`;
+        }
+
+        window.toggleTeacherConsole = () => {
+            const modal = document.getElementById('modal-teacher');
+            modal.classList.toggle('hidden');
+            if (!modal.classList.contains('hidden')) refreshLeaderboard();
+        };
+
+        setupFirebase();
+        refreshLeaderboard();
+    </script>
+</body>
+</html>
