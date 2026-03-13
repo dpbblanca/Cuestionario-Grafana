@@ -153,7 +153,7 @@
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-sky-400">Panel de Control Global</h2>
-                    <p class="text-xs text-gray-500">Monitorizando resultados de todas las ubicaciones</p>
+                    <p class="text-xs text-gray-500">Resultados de todos los compañeros en tiempo real</p>
                 </div>
                 <button onclick="toggleTeacherConsole()" class="bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg text-sm transition-colors">Cerrar</button>
             </div>
@@ -172,7 +172,7 @@
                 </table>
             </div>
             <div class="mt-4 pt-4 border-t border-white/10 text-[10px] text-gray-500 flex justify-between uppercase tracking-tighter">
-                <span id="connection-status">Estado: Conectando...</span>
+                <span id="connection-status">Estado: Iniciando...</span>
                 <span id="last-update">Última actualización: --:--</span>
             </div>
         </div>
@@ -190,8 +190,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, query, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Obtención robusta del App ID (Regla 1)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-mastery-default';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'grafana-mastery-v5';
         let db, auth;
         let currentUser = null;
         window.lastCloudData = [];
@@ -204,38 +203,33 @@
                     auth = getAuth(app);
                     db = getFirestore(app);
 
-                    // Regla 3: Autenticación obligatoria antes de cualquier query
-                    const initAuth = async () => {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    };
-                    
-                    await initAuth();
-
+                    // Esperar autenticación antes de cualquier otra cosa
                     onAuthStateChanged(auth, (user) => {
-                        currentUser = user;
                         if (user) {
-                            document.getElementById('connection-status').innerText = "Estado: Red Global Activa (" + user.uid.substring(0,6) + ")";
+                            currentUser = user;
+                            document.getElementById('connection-status').innerText = "Estado: Conexión Global Establecida";
                             setupRealtimeListener(); 
                         }
                     });
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
                 }
             } catch (e) {
                 console.error("Firebase Init Error:", e);
-                document.getElementById('connection-status').innerText = "Error de Conexión";
+                document.getElementById('connection-status').innerText = "Error Crítico de Red";
             }
         };
 
         const setupRealtimeListener = () => {
             if (!db || !currentUser) return;
             
-            // Regla 1: Ruta exacta pública
+            // Regla 1: Ruta estricta obligatoria
             const scoresPath = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
             
-            // Escuchador de tiempo real con manejo de errores obligatorio
             onSnapshot(scoresPath, (snapshot) => {
                 window.lastCloudData = [];
                 snapshot.forEach(doc => {
@@ -243,8 +237,8 @@
                 });
                 refreshLeaderboard();
             }, (err) => {
-                console.error("Firestore Permission/Path Error:", err);
-                document.getElementById('connection-status').innerText = "Error: Sin acceso a datos globales";
+                console.error("Listener Error:", err);
+                document.getElementById('connection-status').innerText = "Error: Permisos insuficientes";
             });
         };
 
@@ -314,7 +308,6 @@
             document.getElementById('res-score').innerText = score;
             document.getElementById('res-acc').innerText = Math.round((correctAnswers / questions.length) * 100) + '%';
             
-            saveLocalScore(playerName, score, correctAnswers);
             await cloudSync(playerName, score, correctAnswers);
         }
 
@@ -322,7 +315,6 @@
             if (!db || !currentUser) return;
             const status = document.getElementById('sync-status');
             try {
-                // Registro de documento en ruta compartida (Regla 1)
                 const docId = `${currentUser.uid}_${Date.now()}`;
                 await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scores', docId), {
                     nombre: name,
@@ -331,28 +323,18 @@
                     fecha: new Date().toISOString(),
                     uid: currentUser.uid
                 });
-                status.innerText = "✓ Sincronizado con el Panel del Profesor";
+                status.innerText = "✓ Sincronizado con éxito";
                 status.className = "text-xs text-green-400 mb-6 bg-green-400/10 py-2 rounded-lg border border-green-400/20";
             } catch (e) {
                 console.error("Sync Error:", e);
-                status.innerText = "Error: Los compañeros no verán este resultado.";
+                status.innerText = "Error al compartir datos.";
             }
         };
 
-        function saveLocalScore(name, pts, correct) {
-            const scores = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
-            scores.push({ nombre: name, puntos: pts, aciertos: correct, fecha: new Date().toISOString(), local: true });
-            localStorage.setItem('grafana_v4_local', JSON.stringify(scores));
-            refreshLeaderboard();
-        }
-
         function refreshLeaderboard() {
-            const local = JSON.parse(localStorage.getItem('grafana_v4_local') || '[]');
             const cloud = window.lastCloudData || [];
-            
-            // Combinar y eliminar duplicados basados en nombre y fecha exacta
-            const combined = [...local, ...cloud];
-            const unique = Array.from(new Map(combined.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
+            // Filtro de duplicados
+            const unique = Array.from(new Map(cloud.map(item => [`${item.nombre}-${item.fecha}`, item])).values());
             updateLeaderboardUI(unique);
         }
 
@@ -361,11 +343,10 @@
             if (!tbody) return;
             tbody.innerHTML = '';
             
-            // Ordenar por puntos (Regla 2: Ordenar en memoria JS)
             data.sort((a, b) => b.puntos - a.puntos);
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic">Esperando que algún alumno complete el test...</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-500 italic">No hay resultados globales todavía</td></tr>';
                 return;
             }
 
@@ -373,24 +354,18 @@
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors border-b border-white/5";
                 const dateObj = new Date(item.fecha);
-                const fechaStr = dateObj.toLocaleDateString('es-ES');
-                const horaStr = dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-                
-                // Etiqueta visual para distinguir tus propios datos de los de otros
-                const isMine = item.uid === (currentUser?.uid) || item.local;
+                const isMine = item.uid === currentUser?.uid;
 
                 tr.innerHTML = `
                     <td class="p-4">
                         <div class="font-bold ${isMine ? 'text-sky-400' : 'text-white'} flex items-center gap-2">
-                            ${item.nombre}
-                            ${isMine ? '<span class="text-[8px] bg-sky-500/20 px-1 rounded">TÚ</span>' : ''}
+                            ${item.nombre} ${isMine ? '<span class="text-[8px] bg-sky-500/20 px-1 rounded">YO</span>' : ''}
                         </div>
                     </td>
                     <td class="p-4 text-sky-400 font-mono font-bold text-lg">${item.puntos}</td>
                     <td class="p-4 text-gray-400">${item.aciertos}/10</td>
-                    <td class="p-4">
-                        <div class="text-sky-300 font-bold text-[10px] uppercase tracking-wider mb-0.5">${fechaStr}</div>
-                        <div class="text-gray-400 text-xs">${horaStr}</div>
+                    <td class="p-4 text-[10px] text-gray-400">
+                        ${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </td>`;
                 tbody.appendChild(tr);
             });
@@ -404,7 +379,7 @@
         };
 
         setupFirebase();
-        refreshLeaderboard();
     </script>
 </body>
 </html>
+
